@@ -3,7 +3,7 @@ import * as path from 'path';
 
 import { globSync } from 'glob';
 
-import { maybeFilepath, readPrompts, readProviderPromptMap } from '../src/prompts';
+import { loadPromptContents, maybeFilepath, readPrompts, readProviderPromptMap } from '../src/prompts';
 
 import type { Prompt, UnifiedConfig } from '../src/types';
 
@@ -25,6 +25,8 @@ jest.mock('fs', () => ({
   existsSync: jest.fn(),
   mkdirSync: jest.fn(),
 }));
+jest.mock('path');
+
 
 jest.mock('../src/database');
 
@@ -222,6 +224,90 @@ def prompt2:
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({ raw: fileContents['1.txt'], label: fileContents['1.txt'] });
     expect(result[1]).toEqual({ raw: fileContents['2.txt'], label: fileContents['2.txt'] });
+  });
+});
+
+const mockedFs = fs as jest.Mocked<typeof fs>;
+const mockedPath = path as jest.Mocked<typeof path>;
+
+describe.skip('loadPromptContents', () => {
+  const basePath = '/base/path';
+  const promptPathInfo = { raw: 'rawPrompt', resolved: '/resolved/path/prompt.txt' };
+  const forceLoadFromFile = new Set<string>();
+  const resolvedPathToDisplay = new Map<string, string>();
+
+  it('should load raw prompt if the path does not exist', async () => {
+    mockedFs.statSync.mockImplementation(() => { throw new Error('File not found'); });
+    const result = await loadPromptContents(promptPathInfo, forceLoadFromFile, resolvedPathToDisplay, basePath);
+    expect(result).toEqual([{ raw: 'rawPrompt', label: 'rawPrompt' }]);
+  });
+
+  it('should handle directory prompts', async () => {
+    mockedFs.statSync.mockReturnValue({ isDirectory: () => true } as fs.Stats);
+    mockedFs.readdirSync.mockReturnValue(['file1.txt', 'file2.txt']);
+    mockedFs.readFileSync.mockImplementation((filePath) => {
+      if (filePath.includes('file1.txt')) return 'Content of file1';
+      if (filePath.includes('file2.txt')) return 'Content of file2';
+      return '';
+    });
+    mockedPath.join.mockImplementation((...args) => args.join('/'));
+
+    const result = await loadPromptContents(promptPathInfo, forceLoadFromFile, resolvedPathToDisplay, basePath);
+    expect(result).toEqual([
+      { raw: 'Content of file1', label: 'Content of file1' },
+      { raw: 'Content of file2', label: 'Content of file2' },
+    ]);
+  });
+
+  it('should handle JavaScript prompt files', async () => {
+    mockedFs.statSync.mockReturnValue({ isDirectory: () => false } as fs.Stats);
+    mockedPath.parse.mockReturnValue({ base: 'prompt.js', dir: '/resolved/path', ext: '.js', name: 'prompt', root: '/' });
+    jest.mock('/resolved/path/prompt.js', () => jest.fn(() => 'JS Prompt Content'), { virtual: true });
+
+    const result = await loadPromptContents(promptPathInfo, forceLoadFromFile, resolvedPathToDisplay, basePath);
+    expect(result[0].raw).toContain('JS Prompt Content');
+    expect(result[0].function).toBeInstanceOf(Function);
+  });
+
+  it('should handle Python prompt files', async () => {
+    mockedFs.statSync.mockReturnValue({ isDirectory: () => false } as fs.Stats);
+    mockedFs.readFileSync.mockReturnValue('Python file content');
+    mockedPath.parse.mockReturnValue({ base: 'prompt.py', dir: '/resolved/path', ext: '.py', name: 'prompt', root: '/' });
+
+    const result = await loadPromptContents(promptPathInfo, forceLoadFromFile, resolvedPathToDisplay, basePath);
+    expect(result[0].raw).toEqual('Python file content');
+    expect(result[0].function).toBeInstanceOf(Function);
+  });
+
+  it('should handle JSONL prompt files', async () => {
+    mockedFs.statSync.mockReturnValue({ isDirectory: () => false } as fs.Stats);
+    mockedFs.readFileSync.mockReturnValue('{"key1": "value1"}\n{"key2": "value2"}');
+    mockedPath.parse.mockReturnValue({ base: 'prompt.jsonl', dir: '/resolved/path', ext: '.jsonl', name: 'prompt', root: '/' });
+
+    const result = await loadPromptContents(promptPathInfo, forceLoadFromFile, resolvedPathToDisplay, basePath);
+    expect(result).toEqual([
+      { raw: '{"key1": "value1"}', label: '{"key1": "value1"}' },
+      { raw: '{"key2": "value2"}', label: '{"key2": "value2"}' },
+    ]);
+  });
+
+  it('should handle text prompt files', async () => {
+    mockedFs.statSync.mockReturnValue({ isDirectory: () => false } as fs.Stats);
+    mockedFs.readFileSync.mockReturnValue('Text file content');
+    mockedPath.parse.mockReturnValue({ base: 'prompt.txt', dir: '/resolved/path', ext: '.txt', name: 'prompt', root: '/' });
+
+    const result = await loadPromptContents(promptPathInfo, forceLoadFromFile, resolvedPathToDisplay, basePath);
+    expect(result).toEqual([{ raw: 'Text file content', label: 'Text file content' }]);
+  });
+
+  it('should throw an error if no prompts are found in JSONL files', async () => {
+    mockedFs.statSync.mockReturnValue({ isDirectory: () => false } as fs.Stats);
+    mockedFs.readFileSync.mockReturnValue('');
+    mockedPath.parse.mockReturnValue({ base: 'prompt.jsonl', dir: '/resolved/path', ext: '.jsonl', name: 'prompt', root: '/' });
+
+    await expect(loadPromptContents(promptPathInfo, forceLoadFromFile, resolvedPathToDisplay, basePath)).rejects.toThrow(
+      `There are no prompts in ${JSON.stringify(promptPathInfo)}`
+    );
   });
 });
 
