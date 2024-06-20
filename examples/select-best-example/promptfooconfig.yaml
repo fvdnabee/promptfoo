@@ -2,15 +2,19 @@ prompts:
   # - file://prompts1.txt
   # - file://prompts2.txt
   - id: file://prompts1.txt
-    label: prompts 1 file
+    label: a
   - id: file://prompts2.txt
-    label: prompts 2 file
+    label: b
 
 providers:
   - id: openai:gpt-4o
     label: 4o
+    # prompts:
+    #  - a
   - id: openai:gpt-3.5-turbo
     label: '3.5'
+    # prompts:
+    #  - b
 
 tests:
   - vars:
