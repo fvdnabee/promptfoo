@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-
 import { globSync } from 'glob';
 
 import {
@@ -45,11 +44,11 @@ function toPrompt(text: string): Prompt {
   return { raw: text, label: text };
 }
 
-beforeEach(() => {
-  jest.clearAllMocks();
-});
-
 describe('prompts', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   describe('readPrompts', () => {
     it('with single prompt file', async () => {
       jest.mocked(fs.readFileSync).mockReturnValue('Test prompt 1\n---\nTest prompt 2');
@@ -328,7 +327,7 @@ def prompt2:
         resolvedPathToDisplay,
         basePath,
       );
-      expect(result[0].raw).toEqual('Python file content');
+      expect(result[0].raw).toBe('Python file content');
       expect(result[0].function).toBeInstanceOf(Function);
     });
 
@@ -389,6 +388,19 @@ def prompt2:
       await expect(
         loadPromptContents(promptPathInfo, forceLoadFromFile, resolvedPathToDisplay, basePath),
       ).rejects.toThrow(`There are no prompts in ${JSON.stringify(promptPathInfo)}`);
+    });
+
+    it('should throw an error if PROMPTFOO_STRICT_FILES is set and statSync throws an error', async () => {
+      process.env.PROMPTFOO_STRICT_FILES = 'true';
+      mockedFs.statSync.mockImplementation(() => {
+        throw new Error('File not found');
+      });
+
+      await expect(
+        loadPromptContents(promptPathInfo, forceLoadFromFile, resolvedPathToDisplay, basePath),
+      ).rejects.toThrow('File not found');
+
+      delete process.env.PROMPTFOO_STRICT_FILES;
     });
   });
 
