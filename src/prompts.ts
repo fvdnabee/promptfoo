@@ -238,11 +238,6 @@ export async function readPrompts(
   let promptPathInfos: { raw: string; resolved: string }[] = [];
   const promptContents: Prompt[] = [];
 
-  console.warn(
-    '---------------------------------------------------------promptPathOrGlobs',
-    promptPathOrGlobs,
-  );
-
   let inputType: PromptInputType | undefined;
   let resolvedPath: string | undefined;
   const forceLoadFromFile = new Set<string>();
