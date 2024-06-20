@@ -3,9 +3,9 @@ import * as path from 'path';
 
 import { globSync } from 'glob';
 
-import { maybeFilepath, readPrompts } from '../src/prompts';
+import { maybeFilepath, readPrompts, readProviderPromptMap } from '../src/prompts';
 
-import type { Prompt } from '../src/types';
+import type { Prompt, UnifiedConfig } from '../src/types';
 
 jest.mock('../src/esm');
 
@@ -222,6 +222,89 @@ def prompt2:
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({ raw: fileContents['1.txt'], label: fileContents['1.txt'] });
     expect(result[1]).toEqual({ raw: fileContents['2.txt'], label: fileContents['2.txt'] });
+  });
+});
+
+describe('readProviderPromptMap', () => {
+  const samplePrompts: Prompt[] = [
+    { raw: 'Raw content for Prompt 1', label: 'Prompt 1' },
+    { raw: 'Raw content for Prompt 2', label: 'Prompt 2' },
+  ];
+
+  it('should return an empty map if config.providers is undefined', () => {
+    const config: Partial<UnifiedConfig> = {};
+    const result = readProviderPromptMap(config, samplePrompts);
+    expect(result).toEqual({});
+  });
+
+  it('should return a map with provider string as key', () => {
+    const config: Partial<UnifiedConfig> = { providers: 'provider1' };
+    const result = readProviderPromptMap(config, samplePrompts);
+    expect(result).toEqual({
+      provider1: ['Prompt 1', 'Prompt 2'],
+    });
+  });
+
+  it('should return a map with "Custom function" as key when providers is a function', () => {
+    const config: Partial<UnifiedConfig> = {
+      providers: () => Promise.resolve({ data: [] }),
+    };
+    const result = readProviderPromptMap(config, samplePrompts);
+    expect(result).toEqual({
+      'Custom function': ['Prompt 1', 'Prompt 2'],
+    });
+  });
+
+  it('should return a map with provider objects as keys', () => {
+    const config: Partial<UnifiedConfig> = {
+      providers: [{ id: 'provider1', prompts: ['Custom Prompt 1'] }, { id: 'provider2' }],
+    };
+    const result = readProviderPromptMap(config, samplePrompts);
+    expect(result).toEqual({
+      provider1: ['Custom Prompt 1'],
+      provider2: ['Prompt 1', 'Prompt 2'],
+    });
+  });
+
+  it('should return a map with provider label if it exists', () => {
+    const config: Partial<UnifiedConfig> = {
+      providers: [{ id: 'provider1', label: 'label1', prompts: ['Custom Prompt 1'] }],
+    };
+    const result = readProviderPromptMap(config, samplePrompts);
+    expect(result).toEqual({
+      provider1: ['Custom Prompt 1'],
+      label1: ['Custom Prompt 1'],
+    });
+  });
+
+  it('should return a map with ProviderOptionsMap', () => {
+    const config: Partial<UnifiedConfig> = {
+      providers: [
+        {
+          provider1: { id: 'provider1', prompts: ['Custom Prompt 1'] },
+        },
+      ],
+    };
+    const result = readProviderPromptMap(config, samplePrompts);
+    expect(result).toEqual({
+      provider1: ['Custom Prompt 1'],
+    });
+  });
+
+  it('should use allPrompts if provider prompts are not defined', () => {
+    const config: Partial<UnifiedConfig> = {
+      providers: [
+        { id: 'provider1' },
+        {
+          provider2: { id: 'provider2' },
+        },
+      ],
+    };
+    const result = readProviderPromptMap(config, samplePrompts);
+    expect(result).toEqual({
+      provider1: ['Prompt 1', 'Prompt 2'],
+      provider2: ['Prompt 1', 'Prompt 2'],
+    });
   });
 });
 
