@@ -263,23 +263,6 @@ function normalizePaths(
       promptPathInfos: [{ raw: promptPathOrGlobs, resolved: resolvedPath }],
     };
   }
-
-  if (typeof promptPathOrGlobs === 'object' && !Array.isArray(promptPathOrGlobs)) {
-    // Display/contents mapping
-    const promptPathInfos: { raw: string; resolved: string }[] = Object.keys(promptPathOrGlobs).map(
-      (key) => {
-        const resolvedPath = path.resolve(basePath, key);
-        resolvedPathToDisplay.set(resolvedPath, (promptPathOrGlobs as Record<string, string>)[key]);
-        return { raw: key, resolved: resolvedPath };
-      },
-    );
-    return {
-      inputType: PromptInputType.NAMED,
-      forceLoadFromFile,
-      resolvedPathToDisplay,
-      promptPathInfos,
-    };
-  }
   let resolvedPath: string | undefined;
 
   if (Array.isArray(promptPathOrGlobs)) {
@@ -338,6 +321,24 @@ function normalizePaths(
       promptPathInfos,
     };
   }
+
+  if (typeof promptPathOrGlobs === 'object') {
+    // Display/contents mapping
+    const promptPathInfos: { raw: string; resolved: string }[] = Object.keys(promptPathOrGlobs).map(
+      (key) => {
+        const resolvedPath = path.resolve(basePath, key);
+        resolvedPathToDisplay.set(resolvedPath, (promptPathOrGlobs as Record<string, string>)[key]);
+        return { raw: key, resolved: resolvedPath };
+      },
+    );
+    return {
+      inputType: PromptInputType.NAMED,
+      forceLoadFromFile,
+      resolvedPathToDisplay,
+      promptPathInfos,
+    };
+  }
+
   throw new Error(`Unsupported prompt path type: ${JSON.stringify(promptPathOrGlobs)}`);
 }
 
