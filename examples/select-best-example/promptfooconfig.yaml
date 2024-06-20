@@ -1,6 +1,10 @@
 prompts:
-  - file://prompts1.txt
-  - file://prompts2.txt
+  # - file://prompts1.txt
+  # - file://prompts2.txt
+  - id: file://prompts1.txt
+    label: prompts 1 file
+  - id: file://prompts2.txt
+    label: prompts 2 file
 
 providers:
   - id: openai:gpt-4o

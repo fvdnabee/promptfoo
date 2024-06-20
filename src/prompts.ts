@@ -147,7 +147,7 @@ async function loadPromptContents(
       return fs.readFileSync(resolvedPath, 'utf-8');
     });
     promptContents.push(...fileContents.map((content) => ({ raw: content, label: content })));
-  } else if (ext === '.js' || ext === '.cjs' || ext === '.mjs') {
+  } else if (['.js', '.cjs', '.mjs'].includes(ext)) {
     const promptFunction = await importModule(promptPath, functionName);
     const resolvedPathLookup = functionName ? `${promptPath}:${functionName}` : promptPath;
     promptContents.push({
@@ -214,19 +214,15 @@ async function loadPromptContents(
     }
     promptContents.push({ raw: fileContent, label });
   }
-
-  if (
-    // TODO: fix line
-    promptContents.length === 1 &&
-    inputType !== PromptInputType.NAMED &&
-    !promptContents[0]['function']
-  ) {
+  if (promptContents.length === 1 && !promptContents[0]['function']) {
     // Split raw text file into multiple prompts
     const content = promptContents[0].raw;
     promptContents = content
       .split(PROMPT_DELIMITER)
       .map((p) => ({ raw: p.trim(), label: p.trim() }));
   }
+  console.warn('promptContents after split', promptContents);
+
   return promptContents;
 }
 
