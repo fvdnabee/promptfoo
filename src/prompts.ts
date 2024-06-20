@@ -99,6 +99,11 @@ export async function loadPromptContents(
   basePath: string,
   inputType?: PromptInputType,
 ): Promise<Prompt[]> {
+  console.info('promptPathInfo', promptPathInfo);
+  console.info('forceLoadFromFile', forceLoadFromFile);
+  console.info('resolvedPathToDisplay', resolvedPathToDisplay);
+  console.info('basePath', basePath);
+  console.info('inputType', inputType);
   let resolvedPath: string | undefined;
   let promptContents: Prompt[] = [];
   const parsedPath = path.parse(promptPathInfo.resolved);
@@ -189,7 +194,6 @@ export async function loadPromptContents(
       const resolvedPathLookup = functionName ? `${promptPath}:${functionName}` : promptPath;
       label = resolvedPathToDisplay.get(resolvedPathLookup) || resolvedPathLookup;
     }
-
     promptContents.push({
       raw: fileContent,
       label,
@@ -206,12 +210,14 @@ export async function loadPromptContents(
     return promptContents;
   } else if (ext === '.txt') {
     const fileContent = fs.readFileSync(promptPath, 'utf-8');
+    console.log('fileContent', fileContent);
     let label: string | undefined;
     if (inputType === PromptInputType.NAMED) {
       label = resolvedPathToDisplay.get(promptPath) || promptPath;
     } else {
       label = fileContent.length > 200 ? promptPath : fileContent;
     }
+    label = resolvedPathToDisplay.get(promptPath) || promptPath;
     promptContents.push({ raw: fileContent, label });
   }
   if (promptContents.length === 1 && !promptContents[0]['function']) {
@@ -221,23 +227,27 @@ export async function loadPromptContents(
       .split(PROMPT_DELIMITER)
       .map((p) => ({ raw: p.trim(), label: p.trim() }));
   }
-  console.warn('promptContents after split', promptContents);
-
   return promptContents;
 }
 
-export async function readPrompts(
+interface NormalizePathsResult {
+  inputType: PromptInputType | undefined;
+  forceLoadFromFile: Set<string>;
+  resolvedPathToDisplay: Map<string, string>;
+  promptPathInfos: { raw: string; resolved: string }[];
+}
+
+function normalizePaths(
   promptPathOrGlobs: string | (string | Partial<Prompt>)[] | Record<string, string>,
-  basePath: string = '',
-): Promise<Prompt[]> {
-  logger.debug(`Reading prompts from ${JSON.stringify(promptPathOrGlobs)}`);
+  basePath: string,
+): NormalizePathsResult {
   let promptPathInfos: { raw: string; resolved: string }[] = [];
-  const promptContents: Prompt[] = [];
+  let resolvedPath: string | undefined;
 
   let inputType: PromptInputType | undefined;
-  let resolvedPath: string | undefined;
   const forceLoadFromFile = new Set<string>();
   const resolvedPathToDisplay = new Map<string, string>();
+
   if (typeof promptPathOrGlobs === 'string') {
     // Path to a prompt file
     if (promptPathOrGlobs.startsWith('file://')) {
@@ -246,10 +256,16 @@ export async function readPrompts(
       forceLoadFromFile.add(promptPathOrGlobs);
     }
     resolvedPath = path.resolve(basePath, promptPathOrGlobs);
-    promptPathInfos = [{ raw: promptPathOrGlobs, resolved: resolvedPath }];
     resolvedPathToDisplay.set(resolvedPath, promptPathOrGlobs);
-    inputType = PromptInputType.STRING;
-  } else if (Array.isArray(promptPathOrGlobs)) {
+    return {
+      inputType: PromptInputType.STRING,
+      forceLoadFromFile,
+      resolvedPathToDisplay,
+      promptPathInfos: [{ raw: promptPathOrGlobs, resolved: resolvedPath }],
+    };
+  }
+
+  if (Array.isArray(promptPathOrGlobs)) {
     // TODO(ian): Handle object array, such as OpenAI messages
     inputType = PromptInputType.ARRAY;
     promptPathInfos = promptPathOrGlobs.flatMap((pathOrGlob) => {
@@ -293,20 +309,50 @@ export async function readPrompts(
         return globbedPaths.map((globbedPath) => ({ raw: rawPath, resolved: globbedPath }));
       }
       // globSync will return empty if no files match, which is the case when the path includes a function name like: file.js:func
-      return [{ raw: rawPath, resolved: resolvedPath }];
+      return [{ raw: rawPath, resolved: resolvedPath, label }];
     });
-  } else if (typeof promptPathOrGlobs === 'object') {
+
+    return {
+      inputType,
+      forceLoadFromFile,
+      resolvedPathToDisplay,
+      promptPathInfos,
+    };
+  }
+
+  if (typeof promptPathOrGlobs === 'object') {
     // Display/contents mapping
     promptPathInfos = Object.keys(promptPathOrGlobs).map((key) => {
       resolvedPath = path.resolve(basePath, key);
       resolvedPathToDisplay.set(resolvedPath, (promptPathOrGlobs as Record<string, string>)[key]);
       return { raw: key, resolved: resolvedPath };
     });
-    inputType = PromptInputType.NAMED;
+    return {
+      inputType: PromptInputType.NAMED,
+      forceLoadFromFile,
+      resolvedPathToDisplay,
+      promptPathInfos,
+    };
   }
+  throw new Error(`Unsupported prompt path type: ${JSON.stringify(promptPathOrGlobs)}`);
+}
+
+export async function readPrompts(
+  promptPathOrGlobs: string | (string | Partial<Prompt>)[] | Record<string, string>,
+  basePath: string = '',
+): Promise<Prompt[]> {
+  logger.debug(`Reading prompts from ${JSON.stringify(promptPathOrGlobs)}`);
+
+  const {
+    inputType,
+    forceLoadFromFile,
+    resolvedPathToDisplay,
+    promptPathInfos,
+  }: NormalizePathsResult = normalizePaths(promptPathOrGlobs, basePath);
 
   logger.debug(`Resolved prompt paths: ${JSON.stringify(promptPathInfos)}`);
 
+  const promptContents: Prompt[] = [];
   for (const promptPathInfo of promptPathInfos) {
     const contents = await loadPromptContents(
       promptPathInfo,
@@ -317,7 +363,6 @@ export async function readPrompts(
     );
     promptContents.push(...contents);
   }
-
   if (promptContents.length === 0) {
     throw new Error(`There are no prompts in ${JSON.stringify(promptPathOrGlobs)}`);
   }

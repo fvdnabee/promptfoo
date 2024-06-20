@@ -18,13 +18,13 @@ providers:
 
 tests:
   - vars:
-      topic: bananas
+      topic: large language models
     assert:
       - type: select-best
-        value: choose the funniest tweet
+        value: choose the tweet most likely to lead to AGI
 
   - vars:
       topic: nyc
     assert:
       - type: select-best
-        value: choose the tweet that contains the most facts
+        value: choose the tweet that contains the most silly facts
