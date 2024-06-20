@@ -227,6 +227,9 @@ export async function loadPromptContents(
       .split(PROMPT_DELIMITER)
       .map((p) => ({ raw: p.trim(), label: p.trim() }));
   }
+  if (promptContents.length === 0) {
+    throw new Error(`There are no prompts in ${JSON.stringify(promptPathInfo)}`);
+  }
   return promptContents;
 }
 
@@ -355,17 +358,15 @@ export async function readPrompts(
 
   const promptContents: Prompt[] = [];
   for (const promptPathInfo of promptPathInfos) {
-    const prompts = await loadPromptContents(
-      promptPathInfo,
-      forceLoadFromFile,
-      resolvedPathToDisplay,
-      basePath,
-      inputType,
+    promptContents.push(
+      ...(await loadPromptContents(
+        promptPathInfo,
+        forceLoadFromFile,
+        resolvedPathToDisplay,
+        basePath,
+        inputType,
+      )),
     );
-    if (prompts.length === 0) {
-      throw new Error(`There are no prompts in ${JSON.stringify(promptPathInfo)}`);
-    }
-    promptContents.push(...prompts);
   }
   return promptContents;
 }
