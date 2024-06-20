@@ -406,16 +406,11 @@ def prompt2:
       delete process.env.PROMPTFOO_STRICT_FILES;
     });
   });
-
-
+  
   describe.only('normalizePaths', () => {
     const basePath = '/base/path';
     const mockedPath = path as jest.Mocked<typeof path>;
-    const mockedGlobSync = globSync as jest.MockedFunction<typeof globSync>;
-  
-    beforeEach(() => {
-      jest.clearAllMocks();
-    });
+    const mockedGlobSync = jest.mocked(globSync);
   
     it('should normalize a single string path', () => {
       const promptPathOrGlobs = 'prompts.txt';
@@ -447,7 +442,7 @@ def prompt2:
   
     it('should handle array of string paths', () => {
       const promptPathOrGlobs = ['prompt1.txt', 'prompt2.txt'];
-      mockedPath.resolve.mockImplementation((...args) => args.join('/'));
+      // mockedPath.resolve.mockImplementation((...args) => args.join('/'));
   
       const result = normalizePaths(promptPathOrGlobs, basePath);
   
@@ -515,7 +510,7 @@ def prompt2:
 describe.skip('normalizePaths', () => {
   const basePath = '/base/path';
   const mockedPath = path as jest.Mocked<typeof path>;
-  const mockedGlobSync = globSync as jest.MockedFunction<typeof globSync>;
+  const mockedGlobSync = jest.mocked(globSync);
 
   it('should normalize a single string path', () => {
     const promptPathOrGlobs = 'prompts.txt';

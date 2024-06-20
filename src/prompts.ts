@@ -336,7 +336,11 @@ export function normalizePaths(
         logger.debug(
           `Expanded prompt ${rawPath} to ${resolvedPath} and then to ${JSON.stringify(globbedPaths)}`,
         );
-        if (globbedPaths.length > 0) {
+        console.warn('------------------------------');
+        console.warn(globbedPaths);
+        console.warn('------------------------------');
+
+        if (globbedPaths && globbedPaths.length > 0) {
           return globbedPaths.map((globbedPath) => ({ raw: rawPath, resolved: globbedPath }));
         }
         // globSync will return empty if no files match, which is the case when the path includes a function name like: file.js:func
