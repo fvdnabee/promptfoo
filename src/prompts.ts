@@ -98,7 +98,7 @@ export function maybeFilepath(str: string): boolean {
   );
 }
 
-enum PromptInputType {
+export enum PromptInputType {
   STRING = 1,
   ARRAY = 2,
   NAMED = 3,
