@@ -162,16 +162,18 @@ def prompt2:
 
     expect(fs.readFileSync).toHaveBeenCalledTimes(2);
     expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({
-      raw: code,
-      label: 'First prompt',
-      function: expect.any(Function),
-    });
-    expect(result[1]).toEqual({
-      raw: code,
-      label: 'Second prompt',
-      function: expect.any(Function),
-    });
+    expect(result).toEqual([
+      {
+        raw: code,
+        label: 'First prompt',
+        function: expect.any(Function),
+      },
+      {
+        raw: code,
+        label: 'Second prompt',
+        function: expect.any(Function),
+      },
+    ]);
   });
 
   it('readPrompts with .js file', async () => {

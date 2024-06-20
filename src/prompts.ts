@@ -97,13 +97,8 @@ async function loadPromptContents(
   forceLoadFromFile: Set<string>,
   resolvedPathToDisplay: Map<string, string>,
   basePath: string,
+  inputType?: PromptInputType,
 ): Promise<Prompt[]> {
-  console.error('promptPathInfo', promptPathInfo);
-  console.error('forceLoadFromFile', forceLoadFromFile);
-  console.error('resolvedPathToDisplay', resolvedPathToDisplay);
-  console.error('basePath', basePath);
-
-  let inputType: PromptInputType | undefined;
   let resolvedPath: string | undefined;
   let promptContents: Prompt[] = [];
   const parsedPath = path.parse(promptPathInfo.resolved);
@@ -122,16 +117,18 @@ async function loadPromptContents(
     }
   }
   const promptPath = path.join(parsedPath.dir, filename);
+  const ext = path.parse(promptPath).ext;
+
   let stat;
-  let usedRaw = false;
   try {
     stat = fs.statSync(promptPath);
   } catch (err) {
     if (process.env.PROMPTFOO_STRICT_FILES || forceLoadFromFile.has(filename)) {
       throw err;
     }
-    console.error('attempted to load prompt from', promptPath);
-    console.error('promptContents', promptContents);
+  }
+
+  if (!stat) {
     // If the path doesn't exist, it's probably a raw prompt
     promptContents.push({ raw: promptPathInfo.raw, label: promptPathInfo.raw });
     if (maybeFilepath(promptPathInfo.raw)) {
@@ -140,10 +137,7 @@ async function loadPromptContents(
         `Could not find prompt file: "${chalk.red(filename)}". Treating it as a text prompt.`,
       );
     }
-  }
-  const ext = path.parse(promptPath).ext;
-
-  if (stat?.isDirectory()) {
+  } else if (stat?.isDirectory()) {
     // FIXME(ian): Make directory handling share logic with file handling.
     const filesInDirectory = fs.readdirSync(promptPath);
     const fileContents = filesInDirectory.map((fileName) => {
@@ -210,7 +204,7 @@ async function loadPromptContents(
       promptContents.push({ raw: json, label: json });
     }
     return promptContents;
-  } else {
+  } else if (ext === '.txt') {
     const fileContent = fs.readFileSync(promptPath, 'utf-8');
     let label: string | undefined;
     if (inputType === PromptInputType.NAMED) {
@@ -220,10 +214,6 @@ async function loadPromptContents(
     }
     promptContents.push({ raw: fileContent, label });
   }
-
-  console.warn('------------ promptContents -----------');
-  console.warn(promptContents);
-  console.warn('------------ promptContents -----------');
 
   if (
     // TODO: fix line
@@ -332,18 +322,14 @@ export async function readPrompts(
       forceLoadFromFile,
       resolvedPathToDisplay,
       basePath,
+      inputType,
     );
-    console.warn('contents', contents);
     promptContents.push(...contents);
   }
 
   if (promptContents.length === 0) {
     throw new Error(`There are no prompts in ${JSON.stringify(promptPathOrGlobs)}`);
   }
-  console.warn('------------ promptContents -----------');
-  console.warn(promptContents);
-  console.warn('------------ promptContents -----------');
-
   return promptContents;
 }
 
