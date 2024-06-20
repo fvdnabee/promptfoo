@@ -18,12 +18,19 @@ import type {
   TestSuite,
   ProviderOptions,
   ApiProvider,
+  Prompts,
 } from './types';
 
 export * from './external/ragas';
 
 const PROMPT_DELIMITER = process.env.PROMPTFOO_PROMPT_SEPARATOR || '---';
 
+/**
+ * Reads and maps provider prompts based on the given configuration and parsed prompts.
+ * @param {Partial<UnifiedConfig>} config - The configuration object, possibly partial.
+ * @param {Prompt[]} parsedPrompts - Array of parsed prompt objects.
+ * @returns {TestSuite['providerPromptMap']} A mapping of provider IDs to their respective prompts.
+ */
 export function readProviderPromptMap(
   config: Partial<UnifiedConfig>,
   parsedPrompts: Prompt[],
@@ -73,7 +80,12 @@ export function readProviderPromptMap(
   return ret;
 }
 
-function maybeFilepath(str: string): boolean {
+/**
+ * Determines if a given string could be a file path.
+ * @param {string} str - The string to evaluate.
+ * @returns {boolean} True if the string could be a file path, false otherwise.
+ */
+export function maybeFilepath(str: string): boolean {
   return (
     !str.includes('\n') &&
     !str.includes('portkey://') &&
@@ -92,13 +104,22 @@ enum PromptInputType {
   NAMED = 3,
 }
 
+/**
+ * Loads the contents of a prompt based on its path information.
+ * @param {object} promptPathInfo - Object containing raw and resolved path information.
+ * @param {Set<string>} forceLoadFromFile - Set of filenames to force loading from file.
+ * @param {Map<string, string>} resolvedPathToDisplay - Map of resolved paths to display strings.
+ * @param {string} basePath - Base path for resolving file paths.
+ * @param {PromptInputType} [inputType] - Optional type of input.
+ * @returns {Promise<Prompts>} Promise resolving to the loaded prompts.
+ */
 export async function loadPromptContents(
   promptPathInfo: { raw: string; resolved: string },
   forceLoadFromFile: Set<string>,
   resolvedPathToDisplay: Map<string, string>,
   basePath: string,
   inputType?: PromptInputType,
-): Promise<Prompt[]> {
+): Promise<Prompts> {
   console.info('promptPathInfo', promptPathInfo);
   console.info('forceLoadFromFile', forceLoadFromFile);
   console.info('resolvedPathToDisplay', resolvedPathToDisplay);
@@ -207,7 +228,10 @@ export async function loadPromptContents(
     for (const json of jsonLines) {
       promptContents.push({ raw: json, label: json });
     }
-    return promptContents;
+    if (promptContents.length === 0) {
+      throw new Error(`There are no prompts in ${JSON.stringify(promptPathInfo)}`);
+    }
+    return promptContents as Prompts;
   } else if (ext === '.txt') {
     const fileContent = fs.readFileSync(promptPath, 'utf-8');
     console.log('fileContent', fileContent);
@@ -230,7 +254,7 @@ export async function loadPromptContents(
   if (promptContents.length === 0) {
     throw new Error(`There are no prompts in ${JSON.stringify(promptPathInfo)}`);
   }
-  return promptContents;
+  return promptContents as Prompts;
 }
 
 interface NormalizePathsResult {
@@ -240,7 +264,13 @@ interface NormalizePathsResult {
   promptPathInfos: { raw: string; resolved: string }[];
 }
 
-function normalizePaths(
+/**
+ * Normalizes paths for prompt files or globs based on the given base path.
+ * @param {string | (string | Partial<Prompt>)[] | Record<string, string>} promptPathOrGlobs - The prompt path or globs to normalize.
+ * @param {string} basePath - The base path for resolving paths.
+ * @returns {NormalizePathsResult} The result containing normalized paths and other related information.
+ */
+export function normalizePaths(
   promptPathOrGlobs: string | (string | Partial<Prompt>)[] | Record<string, string>,
   basePath: string,
 ): NormalizePathsResult {
@@ -342,10 +372,16 @@ function normalizePaths(
   throw new Error(`Unsupported prompt path type: ${JSON.stringify(promptPathOrGlobs)}`);
 }
 
+/**
+ * Reads prompts from specified paths or globs.
+ * @param {string | (string | Partial<Prompt>)[] | Record<string, string>} promptPathOrGlobs - The prompt path or globs to read from.
+ * @param {string} [basePath=''] - Optional base path for resolving paths.
+ * @returns {Promise<Prompts>} Promise resolving to the read prompts.
+ */
 export async function readPrompts(
   promptPathOrGlobs: string | (string | Partial<Prompt>)[] | Record<string, string>,
   basePath: string = '',
-): Promise<Prompt[]> {
+): Promise<Prompts> {
   logger.debug(`Reading prompts from ${JSON.stringify(promptPathOrGlobs)}`);
 
   const {
@@ -369,7 +405,7 @@ export async function readPrompts(
       )),
     );
   }
-  return promptContents;
+  return promptContents as Prompts;
 }
 
 export const DEFAULT_GRADING_PROMPT = JSON.stringify([

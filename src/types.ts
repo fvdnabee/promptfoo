@@ -281,6 +281,10 @@ export interface Prompt {
   }) => Promise<string | object>;
 }
 
+type NonEmptyArray<T> = [T, ...T[]];
+
+export type Prompts = NonEmptyArray<Prompt>;
+
 // Used for final prompt display
 export type CompletedPrompt = Prompt & {
   provider: string;
