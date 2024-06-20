@@ -1,0 +1,4 @@
+'Write a haiku about {{topic}}'
+---
+'Write a very concise, rhyme about {{topic}}'
+

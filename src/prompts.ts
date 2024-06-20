@@ -92,7 +92,7 @@ enum PromptInputType {
   NAMED = 3,
 }
 
-async function loadPromptContents(
+export async function loadPromptContents(
   promptPathInfo: { raw: string; resolved: string },
   forceLoadFromFile: Set<string>,
   resolvedPathToDisplay: Map<string, string>,

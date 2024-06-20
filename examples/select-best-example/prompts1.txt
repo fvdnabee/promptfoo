@@ -1,0 +1,4 @@
+'Write a tweet about {{topic}} in chinese'
+---
+'Write a very concise, funny tweet about {{topic}} in german'
+
