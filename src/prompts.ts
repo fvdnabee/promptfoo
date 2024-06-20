@@ -241,10 +241,6 @@ function normalizePaths(
   promptPathOrGlobs: string | (string | Partial<Prompt>)[] | Record<string, string>,
   basePath: string,
 ): NormalizePathsResult {
-  let promptPathInfos: { raw: string; resolved: string }[] = [];
-  let resolvedPath: string | undefined;
-
-  let inputType: PromptInputType | undefined;
   const forceLoadFromFile = new Set<string>();
   const resolvedPathToDisplay = new Map<string, string>();
 
@@ -255,7 +251,7 @@ function normalizePaths(
       // Ensure this path is not used as a raw prompt.
       forceLoadFromFile.add(promptPathOrGlobs);
     }
-    resolvedPath = path.resolve(basePath, promptPathOrGlobs);
+    const resolvedPath = path.resolve(basePath, promptPathOrGlobs);
     resolvedPathToDisplay.set(resolvedPath, promptPathOrGlobs);
     return {
       inputType: PromptInputType.STRING,
@@ -265,70 +261,75 @@ function normalizePaths(
     };
   }
 
-  if (Array.isArray(promptPathOrGlobs)) {
-    // TODO(ian): Handle object array, such as OpenAI messages
-    inputType = PromptInputType.ARRAY;
-    promptPathInfos = promptPathOrGlobs.flatMap((pathOrGlob) => {
-      let label;
-      let rawPath: string;
-      if (typeof pathOrGlob === 'object') {
-        // Parse prompt config object {id, label}
-        invariant(
-          pathOrGlob.label,
-          `Prompt object requires label, but got ${JSON.stringify(pathOrGlob)}`,
-        );
-        label = pathOrGlob.label;
-        invariant(
-          pathOrGlob.id,
-          `Prompt object requires id, but got ${JSON.stringify(pathOrGlob)}`,
-        );
-        rawPath = pathOrGlob.id;
-        inputType = PromptInputType.NAMED;
-      } else {
-        label = pathOrGlob;
-        rawPath = pathOrGlob;
-      }
-      invariant(
-        typeof rawPath === 'string',
-        `Prompt path must be a string, but got ${JSON.stringify(rawPath)}`,
-      );
-      if (rawPath.startsWith('file://')) {
-        rawPath = rawPath.slice('file://'.length);
-        // This path is explicitly marked as a file, ensure that it's not used as a raw prompt.
-        forceLoadFromFile.add(rawPath);
-      }
-      resolvedPath = path.resolve(basePath, rawPath);
-      resolvedPathToDisplay.set(resolvedPath, label);
-      const globbedPaths = globSync(resolvedPath.replace(/\\/g, '/'), {
-        windowsPathsNoEscape: true,
-      });
-      logger.debug(
-        `Expanded prompt ${rawPath} to ${resolvedPath} and then to ${JSON.stringify(globbedPaths)}`,
-      );
-      if (globbedPaths.length > 0) {
-        return globbedPaths.map((globbedPath) => ({ raw: rawPath, resolved: globbedPath }));
-      }
-      // globSync will return empty if no files match, which is the case when the path includes a function name like: file.js:func
-      return [{ raw: rawPath, resolved: resolvedPath, label }];
-    });
-
+  if (typeof promptPathOrGlobs === 'object' && !Array.isArray(promptPathOrGlobs)) {
+    // Display/contents mapping
+    const promptPathInfos: { raw: string; resolved: string }[] = Object.keys(promptPathOrGlobs).map(
+      (key) => {
+        const resolvedPath = path.resolve(basePath, key);
+        resolvedPathToDisplay.set(resolvedPath, (promptPathOrGlobs as Record<string, string>)[key]);
+        return { raw: key, resolved: resolvedPath };
+      },
+    );
     return {
-      inputType,
+      inputType: PromptInputType.NAMED,
       forceLoadFromFile,
       resolvedPathToDisplay,
       promptPathInfos,
     };
   }
+  let resolvedPath: string | undefined;
 
-  if (typeof promptPathOrGlobs === 'object') {
-    // Display/contents mapping
-    promptPathInfos = Object.keys(promptPathOrGlobs).map((key) => {
-      resolvedPath = path.resolve(basePath, key);
-      resolvedPathToDisplay.set(resolvedPath, (promptPathOrGlobs as Record<string, string>)[key]);
-      return { raw: key, resolved: resolvedPath };
-    });
+  if (Array.isArray(promptPathOrGlobs)) {
+    // TODO(ian): Handle object array, such as OpenAI messages
+    let inputType: PromptInputType = PromptInputType.ARRAY;
+    const promptPathInfos: { raw: string; resolved: string }[] = promptPathOrGlobs.flatMap(
+      (pathOrGlob) => {
+        let label;
+        let rawPath: string;
+        if (typeof pathOrGlob === 'object') {
+          // Parse prompt config object {id, label}
+          invariant(
+            pathOrGlob.label,
+            `Prompt object requires label, but got ${JSON.stringify(pathOrGlob)}`,
+          );
+          label = pathOrGlob.label;
+          invariant(
+            pathOrGlob.id,
+            `Prompt object requires id, but got ${JSON.stringify(pathOrGlob)}`,
+          );
+          rawPath = pathOrGlob.id;
+          inputType = PromptInputType.NAMED;
+        } else {
+          label = pathOrGlob;
+          rawPath = pathOrGlob;
+        }
+        invariant(
+          typeof rawPath === 'string',
+          `Prompt path must be a string, but got ${JSON.stringify(rawPath)}`,
+        );
+        if (rawPath.startsWith('file://')) {
+          rawPath = rawPath.slice('file://'.length);
+          // This path is explicitly marked as a file, ensure that it's not used as a raw prompt.
+          forceLoadFromFile.add(rawPath);
+        }
+        resolvedPath = path.resolve(basePath, rawPath);
+        resolvedPathToDisplay.set(resolvedPath, label);
+        const globbedPaths = globSync(resolvedPath.replace(/\\/g, '/'), {
+          windowsPathsNoEscape: true,
+        });
+        logger.debug(
+          `Expanded prompt ${rawPath} to ${resolvedPath} and then to ${JSON.stringify(globbedPaths)}`,
+        );
+        if (globbedPaths.length > 0) {
+          return globbedPaths.map((globbedPath) => ({ raw: rawPath, resolved: globbedPath }));
+        }
+        // globSync will return empty if no files match, which is the case when the path includes a function name like: file.js:func
+        return [{ raw: rawPath, resolved: resolvedPath, label }];
+      },
+    );
+
     return {
-      inputType: PromptInputType.NAMED,
+      inputType,
       forceLoadFromFile,
       resolvedPathToDisplay,
       promptPathInfos,
@@ -344,27 +345,27 @@ export async function readPrompts(
   logger.debug(`Reading prompts from ${JSON.stringify(promptPathOrGlobs)}`);
 
   const {
-    inputType,
     forceLoadFromFile,
-    resolvedPathToDisplay,
+    inputType,
     promptPathInfos,
+    resolvedPathToDisplay,
   }: NormalizePathsResult = normalizePaths(promptPathOrGlobs, basePath);
 
   logger.debug(`Resolved prompt paths: ${JSON.stringify(promptPathInfos)}`);
 
   const promptContents: Prompt[] = [];
   for (const promptPathInfo of promptPathInfos) {
-    const contents = await loadPromptContents(
+    const prompts = await loadPromptContents(
       promptPathInfo,
       forceLoadFromFile,
       resolvedPathToDisplay,
       basePath,
       inputType,
     );
-    promptContents.push(...contents);
-  }
-  if (promptContents.length === 0) {
-    throw new Error(`There are no prompts in ${JSON.stringify(promptPathOrGlobs)}`);
+    if (prompts.length === 0) {
+      throw new Error(`There are no prompts in ${JSON.stringify(promptPathInfo)}`);
+    }
+    promptContents.push(...prompts);
   }
   return promptContents;
 }
