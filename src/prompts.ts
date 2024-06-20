@@ -92,13 +92,166 @@ enum PromptInputType {
   NAMED = 3,
 }
 
+async function loadPromptContents(
+  promptPathInfo: { raw: string; resolved: string },
+  forceLoadFromFile: Set<string>,
+  resolvedPathToDisplay: Map<string, string>,
+  basePath: string,
+): Promise<Prompt[]> {
+  console.error('promptPathInfo', promptPathInfo);
+  console.error('forceLoadFromFile', forceLoadFromFile);
+  console.error('resolvedPathToDisplay', resolvedPathToDisplay);
+  console.error('basePath', basePath);
+
+  let inputType: PromptInputType | undefined;
+  let resolvedPath: string | undefined;
+  let promptContents: Prompt[] = [];
+  const parsedPath = path.parse(promptPathInfo.resolved);
+  let filename = parsedPath.base;
+  let functionName: string | undefined;
+  if (parsedPath.base.includes(':')) {
+    const splits = parsedPath.base.split(':');
+    if (
+      splits[0] &&
+      (splits[0].endsWith('.js') ||
+        splits[0].endsWith('.cjs') ||
+        splits[0].endsWith('.mjs') ||
+        splits[0].endsWith('.py'))
+    ) {
+      [filename, functionName] = splits;
+    }
+  }
+  const promptPath = path.join(parsedPath.dir, filename);
+  let stat;
+  let usedRaw = false;
+  try {
+    stat = fs.statSync(promptPath);
+  } catch (err) {
+    if (process.env.PROMPTFOO_STRICT_FILES || forceLoadFromFile.has(filename)) {
+      throw err;
+    }
+    console.error('attempted to load prompt from', promptPath);
+    console.error('promptContents', promptContents);
+    // If the path doesn't exist, it's probably a raw prompt
+    promptContents.push({ raw: promptPathInfo.raw, label: promptPathInfo.raw });
+    if (maybeFilepath(promptPathInfo.raw)) {
+      // It looks like a filepath, so falling back could be a mistake. Print a warning
+      logger.warn(
+        `Could not find prompt file: "${chalk.red(filename)}". Treating it as a text prompt.`,
+      );
+    }
+  }
+  const ext = path.parse(promptPath).ext;
+
+  if (stat?.isDirectory()) {
+    // FIXME(ian): Make directory handling share logic with file handling.
+    const filesInDirectory = fs.readdirSync(promptPath);
+    const fileContents = filesInDirectory.map((fileName) => {
+      const joinedPath = path.join(promptPath, fileName);
+      resolvedPath = path.resolve(basePath, joinedPath);
+      resolvedPathToDisplay.set(resolvedPath, joinedPath);
+      return fs.readFileSync(resolvedPath, 'utf-8');
+    });
+    promptContents.push(...fileContents.map((content) => ({ raw: content, label: content })));
+  } else if (ext === '.js' || ext === '.cjs' || ext === '.mjs') {
+    const promptFunction = await importModule(promptPath, functionName);
+    const resolvedPathLookup = functionName ? `${promptPath}:${functionName}` : promptPath;
+    promptContents.push({
+      raw: String(promptFunction),
+      label: resolvedPathToDisplay.get(resolvedPathLookup) || String(promptFunction),
+      function: promptFunction,
+    });
+  } else if (ext === '.py') {
+    const fileContent = fs.readFileSync(promptPath, 'utf-8');
+    const promptFunction = async (context: {
+      vars: Record<string, string | object>;
+      provider?: ApiProvider;
+    }) => {
+      if (functionName) {
+        return runPython(promptPath, functionName, [
+          {
+            ...context,
+            provider: {
+              id: context.provider?.id,
+              label: context.provider?.label,
+            },
+          },
+        ]);
+      } else {
+        // Legacy: run the whole file
+        const options: PythonShellOptions = {
+          mode: 'text',
+          pythonPath: process.env.PROMPTFOO_PYTHON || 'python',
+          args: [safeJsonStringify(context)],
+        };
+        logger.debug(`Executing python prompt script ${promptPath}`);
+        const results = (await PythonShell.run(promptPath, options)).join('\n');
+        logger.debug(`Python prompt script ${promptPath} returned: ${results}`);
+        return results;
+      }
+    };
+    let label = fileContent;
+    if (inputType === PromptInputType.NAMED) {
+      const resolvedPathLookup = functionName ? `${promptPath}:${functionName}` : promptPath;
+      label = resolvedPathToDisplay.get(resolvedPathLookup) || resolvedPathLookup;
+    }
+
+    promptContents.push({
+      raw: fileContent,
+      label,
+      function: promptFunction,
+    });
+  } else if (ext === '.jsonl') {
+    const fileContent = fs.readFileSync(promptPath, 'utf-8');
+
+    // Special case for JSONL file
+    const jsonLines = fileContent.split(/\r?\n/).filter((line) => line.length > 0);
+    for (const json of jsonLines) {
+      promptContents.push({ raw: json, label: json });
+    }
+    return promptContents;
+  } else {
+    const fileContent = fs.readFileSync(promptPath, 'utf-8');
+    let label: string | undefined;
+    if (inputType === PromptInputType.NAMED) {
+      label = resolvedPathToDisplay.get(promptPath) || promptPath;
+    } else {
+      label = fileContent.length > 200 ? promptPath : fileContent;
+    }
+    promptContents.push({ raw: fileContent, label });
+  }
+
+  console.warn('------------ promptContents -----------');
+  console.warn(promptContents);
+  console.warn('------------ promptContents -----------');
+
+  if (
+    // TODO: fix line
+    promptContents.length === 1 &&
+    inputType !== PromptInputType.NAMED &&
+    !promptContents[0]['function']
+  ) {
+    // Split raw text file into multiple prompts
+    const content = promptContents[0].raw;
+    promptContents = content
+      .split(PROMPT_DELIMITER)
+      .map((p) => ({ raw: p.trim(), label: p.trim() }));
+  }
+  return promptContents;
+}
+
 export async function readPrompts(
   promptPathOrGlobs: string | (string | Partial<Prompt>)[] | Record<string, string>,
   basePath: string = '',
 ): Promise<Prompt[]> {
   logger.debug(`Reading prompts from ${JSON.stringify(promptPathOrGlobs)}`);
   let promptPathInfos: { raw: string; resolved: string }[] = [];
-  let promptContents: Prompt[] = [];
+  const promptContents: Prompt[] = [];
+
+  console.warn(
+    '---------------------------------------------------------promptPathOrGlobs',
+    promptPathOrGlobs,
+  );
 
   let inputType: PromptInputType | undefined;
   let resolvedPath: string | undefined;
@@ -174,138 +327,23 @@ export async function readPrompts(
   logger.debug(`Resolved prompt paths: ${JSON.stringify(promptPathInfos)}`);
 
   for (const promptPathInfo of promptPathInfos) {
-    const parsedPath = path.parse(promptPathInfo.resolved);
-    let filename = parsedPath.base;
-    let functionName: string | undefined;
-    if (parsedPath.base.includes(':')) {
-      const splits = parsedPath.base.split(':');
-      if (
-        splits[0] &&
-        (splits[0].endsWith('.js') ||
-          splits[0].endsWith('.cjs') ||
-          splits[0].endsWith('.mjs') ||
-          splits[0].endsWith('.py'))
-      ) {
-        [filename, functionName] = splits;
-      }
-    }
-    const promptPath = path.join(parsedPath.dir, filename);
-    let stat;
-    let usedRaw = false;
-    try {
-      stat = fs.statSync(promptPath);
-    } catch (err) {
-      if (process.env.PROMPTFOO_STRICT_FILES || forceLoadFromFile.has(filename)) {
-        throw err;
-      }
-      // If the path doesn't exist, it's probably a raw prompt
-      promptContents.push({ raw: promptPathInfo.raw, label: promptPathInfo.raw });
-      usedRaw = true;
-    }
-    if (usedRaw) {
-      if (maybeFilepath(promptPathInfo.raw)) {
-        // It looks like a filepath, so falling back could be a mistake. Print a warning
-        logger.warn(
-          `Could not find prompt file: "${chalk.red(filename)}". Treating it as a text prompt.`,
-        );
-      }
-    } else if (stat?.isDirectory()) {
-      // FIXME(ian): Make directory handling share logic with file handling.
-      const filesInDirectory = fs.readdirSync(promptPath);
-      const fileContents = filesInDirectory.map((fileName) => {
-        const joinedPath = path.join(promptPath, fileName);
-        resolvedPath = path.resolve(basePath, joinedPath);
-        resolvedPathToDisplay.set(resolvedPath, joinedPath);
-        return fs.readFileSync(resolvedPath, 'utf-8');
-      });
-      promptContents.push(...fileContents.map((content) => ({ raw: content, label: content })));
-    } else {
-      const ext = path.parse(promptPath).ext;
-      if (ext === '.js' || ext === '.cjs' || ext === '.mjs') {
-        const promptFunction = await importModule(promptPath, functionName);
-        const resolvedPathLookup = functionName ? `${promptPath}:${functionName}` : promptPath;
-        promptContents.push({
-          raw: String(promptFunction),
-          label: resolvedPathToDisplay.get(resolvedPathLookup) || String(promptFunction),
-          function: promptFunction,
-        });
-      } else if (ext === '.py') {
-        const fileContent = fs.readFileSync(promptPath, 'utf-8');
-        const promptFunction = async (context: {
-          vars: Record<string, string | object>;
-          provider?: ApiProvider;
-        }) => {
-          if (functionName) {
-            return runPython(promptPath, functionName, [
-              {
-                ...context,
-                provider: {
-                  id: context.provider?.id,
-                  label: context.provider?.label,
-                },
-              },
-            ]);
-          } else {
-            // Legacy: run the whole file
-            const options: PythonShellOptions = {
-              mode: 'text',
-              pythonPath: process.env.PROMPTFOO_PYTHON || 'python',
-              args: [safeJsonStringify(context)],
-            };
-            logger.debug(`Executing python prompt script ${promptPath}`);
-            const results = (await PythonShell.run(promptPath, options)).join('\n');
-            logger.debug(`Python prompt script ${promptPath} returned: ${results}`);
-            return results;
-          }
-        };
-        let label = fileContent;
-        if (inputType === PromptInputType.NAMED) {
-          const resolvedPathLookup = functionName ? `${promptPath}:${functionName}` : promptPath;
-          label = resolvedPathToDisplay.get(resolvedPathLookup) || resolvedPathLookup;
-        }
-
-        promptContents.push({
-          raw: fileContent,
-          label,
-          function: promptFunction,
-        });
-      } else {
-        const fileContent = fs.readFileSync(promptPath, 'utf-8');
-        let label: string | undefined;
-        if (inputType === PromptInputType.NAMED) {
-          label = resolvedPathToDisplay.get(promptPath) || promptPath;
-        } else {
-          label = fileContent.length > 200 ? promptPath : fileContent;
-
-          const ext = path.parse(promptPath).ext;
-          if (ext === '.jsonl') {
-            // Special case for JSONL file
-            const jsonLines = fileContent.split(/\r?\n/).filter((line) => line.length > 0);
-            for (const json of jsonLines) {
-              promptContents.push({ raw: json, label: json });
-            }
-            continue;
-          }
-        }
-        promptContents.push({ raw: fileContent, label });
-      }
-    }
+    const contents = await loadPromptContents(
+      promptPathInfo,
+      forceLoadFromFile,
+      resolvedPathToDisplay,
+      basePath,
+    );
+    console.warn('contents', contents);
+    promptContents.push(...contents);
   }
 
-  if (
-    promptContents.length === 1 &&
-    inputType !== PromptInputType.NAMED &&
-    !promptContents[0]['function']
-  ) {
-    // Split raw text file into multiple prompts
-    const content = promptContents[0].raw;
-    promptContents = content
-      .split(PROMPT_DELIMITER)
-      .map((p) => ({ raw: p.trim(), label: p.trim() }));
-  }
   if (promptContents.length === 0) {
     throw new Error(`There are no prompts in ${JSON.stringify(promptPathOrGlobs)}`);
   }
+  console.warn('------------ promptContents -----------');
+  console.warn(promptContents);
+  console.warn('------------ promptContents -----------');
+
   return promptContents;
 }
 

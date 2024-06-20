@@ -107,8 +107,11 @@ describe('prompts', () => {
 
     expect(fs.readFileSync).toHaveBeenCalledTimes(2);
     expect(result).toHaveLength(2);
-    expect(result[0]).toEqual({ raw: 'some raw text', label: 'foo1' });
-    expect(result[1]).toEqual(expect.objectContaining({ raw: 'some raw text', label: 'foo2' }));
+
+    expect(result).toEqual([
+      { raw: 'some raw text', label: 'foo1' },
+      expect.objectContaining({ raw: 'some raw text', label: 'foo2' }),
+    ]);
   });
 
   it('readPrompts with JSONL file', async () => {
