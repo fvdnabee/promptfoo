@@ -7,6 +7,7 @@ import {
   renderPrompt,
   resolveVariables,
   generateVarCombinations,
+  isAllowedPrompt,
 } from '../src/evaluator';
 
 import type { ApiProvider, TestSuite, Prompt } from '../src/types';
@@ -886,5 +887,41 @@ describe('generateVarCombinations', () => {
     const vars = {};
     const expected = [{}];
     expect(generateVarCombinations(vars)).toEqual(expected);
+  });
+});
+
+describe.only('isAllowedPrompt', () => {
+  const prompt1: Prompt = {
+    label: 'prompt1',
+    raw: '',
+  };
+  const prompt2: Prompt = {
+    label: 'group1:prompt2',
+    raw: '',
+  };
+  const prompt3: Prompt = {
+    label: 'group2:prompt3',
+    raw: '',
+  };
+
+  it('should return true if allowedPrompts is undefined', () => {
+    expect(isAllowedPrompt(prompt1, undefined)).toBe(true);
+  });
+
+  it('should return true if allowedPrompts includes the prompt label', () => {
+    expect(isAllowedPrompt(prompt1, ['prompt1', 'prompt2'])).toBe(true);
+  });
+
+  it('should return true if allowedPrompts includes a label that matches the start of the prompt label followed by a colon', () => {
+    expect(isAllowedPrompt(prompt2, ['group1'])).toBe(true);
+  });
+
+  it('should return false if allowedPrompts does not include the prompt label or any matching start label with a colon', () => {
+    expect(isAllowedPrompt(prompt3, ['group1', 'prompt2'])).toBe(false);
+  });
+
+  // TODO: What should the expected behavior of this test be?
+  it('should return false if allowedPrompts is an empty array', () => {
+    expect(isAllowedPrompt(prompt1, [])).toBe(false);
   });
 });
