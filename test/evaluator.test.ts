@@ -890,7 +890,7 @@ describe('generateVarCombinations', () => {
   });
 });
 
-describe.only('isAllowedPrompt', () => {
+describe('isAllowedPrompt', () => {
   const prompt1: Prompt = {
     label: 'prompt1',
     raw: '',
