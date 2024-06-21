@@ -289,38 +289,42 @@ export function normalizePaths(
     // TODO(ian): Handle object array, such as OpenAI messages
     let inputType: PromptInputType = PromptInputType.ARRAY;
     const promptPathInfos: { raw: string; resolved: string; label?: string }[] =
-      promptPathOrGlobs.flatMap((pathOrGlob) => {
+      promptPathOrGlobs.flatMap((promptPathOrGlob) => {
         logger.debug(
-          `-------------------\nNormalizing path or glob: ${JSON.stringify(pathOrGlob)}\n-----------------`,
+          `-------------------\nNormalizing path or glob: ${JSON.stringify(promptPathOrGlob)}\n-----------------`,
         );
         let label;
         let rawPath: string;
-        if (typeof pathOrGlob === 'object') {
+        if (typeof promptPathOrGlob === 'string') {
+          label = promptPathOrGlob;
+          rawPath = promptPathOrGlob;
+          if (rawPath.startsWith('file://')) {
+            rawPath = rawPath.slice('file://'.length);
+            // This path is explicitly marked as a file, ensure that it's not used as a raw prompt.
+            forceLoadFromFile.add(rawPath);
+          }
+        } else if (typeof promptPathOrGlob === 'object') {
           // Parse prompt config object {id, label}
           invariant(
-            pathOrGlob.label,
-            `Prompt object requires label, but got ${JSON.stringify(pathOrGlob)}`,
+            promptPathOrGlob.label,
+            `Prompt object requires label, but got ${JSON.stringify(promptPathOrGlob)}`,
           );
-          label = pathOrGlob.label;
+          label = promptPathOrGlob.label;
           invariant(
-            pathOrGlob.id,
-            `Prompt object requires id, but got ${JSON.stringify(pathOrGlob)}`,
+            promptPathOrGlob.id,
+            `Prompt object requires id, but got ${JSON.stringify(promptPathOrGlob)}`,
           );
-          rawPath = pathOrGlob.id;
+          rawPath = promptPathOrGlob.id;
           inputType = PromptInputType.NAMED;
         } else {
-          label = pathOrGlob;
-          rawPath = pathOrGlob;
+          label = promptPathOrGlob;
+          rawPath = promptPathOrGlob;
         }
         invariant(
           typeof rawPath === 'string',
           `Prompt path must be a string, but got ${JSON.stringify(rawPath)}`,
         );
-        if (rawPath.startsWith('file://')) {
-          rawPath = rawPath.slice('file://'.length);
-          // This path is explicitly marked as a file, ensure that it's not used as a raw prompt.
-          forceLoadFromFile.add(rawPath);
-        }
+
         resolvedPath = path.resolve(basePath, rawPath);
         resolvedPathToDisplay.set(resolvedPath, label);
         const globbedPaths = globSync(resolvedPath.replace(/\\/g, '/'), {
@@ -329,15 +333,15 @@ export function normalizePaths(
         logger.debug(
           `Expanded prompt ${rawPath} to ${resolvedPath} and then to ${JSON.stringify(globbedPaths)}`,
         );
-        if (globbedPaths && globbedPaths.length > 0) {
+        if (globbedPaths?.length > 0) {
           return globbedPaths.map((globbedPath) => ({
             raw: rawPath,
             resolved: globbedPath,
-            label,
+            // label,
           }));
         }
         // globSync will return empty if no files match, which is the case when the path includes a function name like: file.js:func
-        return [{ raw: rawPath, resolved: resolvedPath, label }];
+        return [{ raw: rawPath, resolved: resolvedPath }];
       });
 
     return {

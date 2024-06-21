@@ -120,11 +120,11 @@ describe('prompts', () => {
       expect(fs.readFileSync).toHaveBeenCalledTimes(2);
       expect(result).toEqual([
         {
-          label: 'prompts: Test prompt 1',
+          label: 'Test prompt 1',
           raw: 'Test prompt 1',
         },
         {
-          label: 'prompts: Test prompt 2',
+          label: 'Test prompt 2',
           raw: 'Test prompt 2',
         },
       ]);
@@ -140,7 +140,7 @@ describe('prompts', () => {
       expect(fs.readFileSync).toHaveBeenCalledTimes(1);
       expect(result).toEqual([
         {
-          label: 'prompts.txt: ',
+          label: '',
           raw: '',
         },
       ]);
@@ -185,11 +185,11 @@ describe('prompts', () => {
       expect(fs.readFileSync).toHaveBeenCalledTimes(1);
       expect(result).toEqual([
         {
-          label: 'prompts.jsonl: ' + JSON.stringify(data[0]),
+          label: JSON.stringify(data[0]),
           raw: JSON.stringify(data[0]),
         },
         {
-          label: 'prompts.jsonl: ' + JSON.stringify(data[1]),
+          label: JSON.stringify(data[1]),
           raw: JSON.stringify(data[1]),
         },
       ]);
@@ -226,12 +226,12 @@ def prompt2:
       expect(result).toEqual([
         {
           raw: code,
-          label: 'First prompt: First prompt',
+          label: 'First prompt',
           function: expect.any(Function),
         },
         {
           raw: code,
-          label: 'Second prompt: Second prompt',
+          label: 'Second prompt',
           function: expect.any(Function),
         },
       ]);
@@ -286,11 +286,11 @@ def prompt2:
       expect(result).toEqual([
         {
           raw: fileContents['1.txt'],
-          label: `${promptPaths[0]}: ${fileContents['1.txt']}`,
+          label: fileContents['1.txt'],
         },
         {
           raw: fileContents['2.txt'],
-          label: `${promptPaths[0]}: ${fileContents['2.txt']}`,
+          label: fileContents['2.txt'],
         },
       ]);
     });
@@ -380,7 +380,6 @@ def prompt2:
       expect(result).toEqual([
         {
           function: expect.any(Function),
-          label: 'JS Prompt Content',
           raw: `function () {
   return fn.apply(this, arguments);
 }`,
@@ -604,12 +603,10 @@ def prompt2:
           {
             raw: 'prompt1.txt',
             resolved: '/base/path/prompt1.txt',
-            label: 'prompt1.txt',
           },
           {
             raw: 'prompt2.txt',
             resolved: '/base/path/prompt2.txt',
-            label: 'prompt2.txt',
           },
         ],
       });
@@ -654,12 +651,10 @@ def prompt2:
         resolvedPathToDisplay: new Map([['/base/path/./prompts/*.txt', 'file://./prompts/*.txt']]),
         promptPathInfos: [
           {
-            label: 'file://./prompts/*.txt',
             raw: './prompts/*.txt',
             resolved: '/base/path/prompts/prompt1.txt',
           },
           {
-            label: 'file://./prompts/*.txt',
             raw: './prompts/*.txt',
             resolved: '/base/path/prompts/prompt2.txt',
           },
@@ -677,9 +672,7 @@ def prompt2:
         inputType: PromptInputType.ARRAY,
         forceLoadFromFile: new Set(),
         resolvedPathToDisplay: new Map([['/base/path/file.js:func', 'file.js:func']]),
-        promptPathInfos: [
-          { raw: 'file.js:func', resolved: '/base/path/file.js:func', label: 'file.js:func' },
-        ],
+        promptPathInfos: [{ raw: 'file.js:func', resolved: '/base/path/file.js:func' }],
       });
     });
 
