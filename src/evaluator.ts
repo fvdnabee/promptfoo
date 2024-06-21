@@ -550,8 +550,6 @@ class Evaluator {
       }
     }
 
-    logger.debug(`prompts---------------------- ${JSON.stringify(prompts)}`);
-
     // Aggregate all vars across test cases
     let tests =
       testSuite.tests && testSuite.tests.length > 0
