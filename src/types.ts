@@ -597,7 +597,7 @@ export interface TestSuite {
   providers: ApiProvider[];
 
   // One or more prompt strings
-  prompts: Prompt[];
+  prompts: Prompts;
 
   // Optional mapping of provider to prompt display strings.  If not provided,
   // all prompts are used for all providers.

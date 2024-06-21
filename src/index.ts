@@ -20,6 +20,7 @@ import type {
   EvaluateTestSuite,
   ProviderOptions,
   PromptFunction,
+  Prompts,
 } from './types';
 import { readPrompts } from './prompts';
 
@@ -61,7 +62,7 @@ async function evaluate(testSuite: EvaluateTestSuite, options: EvaluateOptions =
           }
         }),
       )
-    ).flat(),
+    ).flat() as Prompts,
   };
 
   // Resolve nested providers

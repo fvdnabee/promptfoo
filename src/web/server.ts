@@ -14,7 +14,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import promptfoo, {
   EvaluateTestSuiteWithEvaluateOptions,
   Job,
-  Prompt,
+  Prompts,
   PromptWithMetadata,
   TestCase,
   TestSuite,
@@ -214,7 +214,7 @@ export async function startServer(
 
   app.post('/api/dataset/generate', async (req, res) => {
     const testSuite: TestSuite = {
-      prompts: req.body.prompts as Prompt[],
+      prompts: req.body.prompts as Prompts,
       tests: req.body.tests as TestCase[],
       providers: [],
     };
