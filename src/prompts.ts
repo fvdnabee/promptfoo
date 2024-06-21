@@ -130,15 +130,12 @@ export async function loadPromptContents(
   const parsedPath = path.parse(promptPathInfo.resolved);
   let filename = parsedPath.base;
   let functionName: string | undefined;
+
+  const scriptExtensions = ['.js', '.cjs', '.mjs', '.py'];
+
   if (parsedPath.base.includes(':')) {
     const splits = parsedPath.base.split(':');
-    if (
-      splits[0] &&
-      (splits[0].endsWith('.js') ||
-        splits[0].endsWith('.cjs') ||
-        splits[0].endsWith('.mjs') ||
-        splits[0].endsWith('.py'))
-    ) {
+    if (splits[0] && scriptExtensions.some((ext) => splits[0].endsWith(ext))) {
       [filename, functionName] = splits;
     }
   }
