@@ -1,5 +1,6 @@
-prompts:
-  - 'Solve this riddle: {{riddle}}'
+prompts: 
+  1: 'Solve this riddle: {{riddle}}'
+  2: 'Solve this puzzle: {{riddle}}'
 
 providers:
   - openai:gpt-3.5-turbo
@@ -10,9 +11,6 @@ defaultTest:
     # Inference should always cost less than this (USD)
     - type: cost
       threshold: 0.002
-    # Inference should always be faster than this (milliseconds)
-    - type: latency
-      threshold: 3000
 
 tests:
   - vars:

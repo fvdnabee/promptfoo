@@ -267,33 +267,26 @@ export function normalizePaths(
   const forceLoadFromFile = new Set<string>();
   const resolvedPathToDisplay = new Map<string, string>();
 
-  if (typeof promptPathOrGlobs === 'string') {
-    // Path to a prompt file
-    if (promptPathOrGlobs.startsWith('file://')) {
-      promptPathOrGlobs = promptPathOrGlobs.slice('file://'.length);
-      // Ensure this path is not used as a raw prompt.
-      forceLoadFromFile.add(promptPathOrGlobs);
-    }
-    const resolvedPath = path.resolve(basePath, promptPathOrGlobs);
-    resolvedPathToDisplay.set(resolvedPath, promptPathOrGlobs);
-    return {
-      inputType: PromptInputType.STRING,
-      forceLoadFromFile,
-      resolvedPathToDisplay,
-      promptPathInfos: [{ raw: promptPathOrGlobs, resolved: resolvedPath }],
-    };
-  }
-  let resolvedPath: string | undefined;
 
-  if (Array.isArray(promptPathOrGlobs)) {
+  if (typeof promptPathOrGlobs === 'object' && !Array.isArray(promptPathOrGlobs)) {
+    console.warn('promptPathOrGlobs', promptPathOrGlobs);
+    promptPathOrGlobs = Object.values(promptPathOrGlobs);
+  }
+
+  const promptArrayOrObject: (string | Partial<Prompt>)[] =
+    typeof promptPathOrGlobs === 'string' ? [promptPathOrGlobs] : promptPathOrGlobs;
+
+  let resolvedPath: string;
+
+  if (Array.isArray(promptArrayOrObject) && promptArrayOrObject.length > 0) {
     // TODO(ian): Handle object array, such as OpenAI messages
     let inputType: PromptInputType = PromptInputType.ARRAY;
     const promptPathInfos: { raw: string; resolved: string; label?: string }[] =
-      promptPathOrGlobs.flatMap((promptPathOrGlob) => {
+      promptArrayOrObject.flatMap((promptPathOrGlob) => {
         logger.debug(
           `-------------------\nNormalizing path or glob: ${JSON.stringify(promptPathOrGlob)}\n-----------------`,
         );
-        let label;
+        let label: string;
         let rawPath: string;
         if (typeof promptPathOrGlob === 'string') {
           label = promptPathOrGlob;
@@ -316,6 +309,8 @@ export function normalizePaths(
           );
           rawPath = promptPathOrGlob.id;
           inputType = PromptInputType.NAMED;
+
+          return { raw: rawPath, resolved: resolvedPath };
         } else {
           label = promptPathOrGlob;
           rawPath = promptPathOrGlob;
@@ -337,11 +332,11 @@ export function normalizePaths(
           return globbedPaths.map((globbedPath) => ({
             raw: rawPath,
             resolved: globbedPath,
-            // label,
+            label,
           }));
         }
         // globSync will return empty if no files match, which is the case when the path includes a function name like: file.js:func
-        return [{ raw: rawPath, resolved: resolvedPath }];
+        return { raw: rawPath, resolved: resolvedPath };
       });
 
     return {
@@ -352,7 +347,7 @@ export function normalizePaths(
     };
   }
 
-  if (typeof promptPathOrGlobs === 'object') {
+  if (typeof promptArrayOrObject === 'object') {
     // Display/contents mapping
     const promptPathInfos: { raw: string; resolved: string }[] = Object.keys(promptPathOrGlobs).map(
       (key) => {
