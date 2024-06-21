@@ -128,7 +128,7 @@ describe('prompts', () => {
       expect(result).toHaveLength(2);
 
       expect(result).toEqual([
-        { raw: 'some raw text', label: 'foo1' },
+        { raw: 'some raw text', label: 'some raw text' },
         expect.objectContaining({ raw: 'some raw text', label: 'foo2' }),
       ]);
     });
@@ -312,8 +312,15 @@ def prompt2:
         resolvedPathToDisplay,
         basePath,
       );
-      expect(result[0].raw).toContain('JS Prompt Content');
-      expect(result[0].function).toBeInstanceOf(Function);
+      expect(result).toEqual([
+        {
+          function: expect.any(Function),
+          label: 'JS Prompt Content',
+          raw: `function () {
+  return fn.apply(this, arguments);
+}`,
+        },
+      ]);
     });
 
     it('should handle Python prompt files', async () => {
