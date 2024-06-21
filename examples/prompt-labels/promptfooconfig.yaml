@@ -11,8 +11,12 @@ providers:
     label: 4o
     prompts:
       - a
+    #  - b
   - id: openai:gpt-3.5-turbo
     label: '3.5'
+    prompts:
+      #  - a
+      - b
 
 tests:
   - vars:

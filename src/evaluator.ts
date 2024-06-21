@@ -504,7 +504,11 @@ class Evaluator {
         // Check if providerPromptMap exists and if it contains the current prompt's label
         if (testSuite.providerPromptMap) {
           const allowedPrompts = testSuite.providerPromptMap[provider.id()];
-          if (allowedPrompts && !allowedPrompts.includes(prompt.label)) {
+          if (
+            allowedPrompts &&
+            !allowedPrompts.includes(prompt.label) &&
+            !allowedPrompts.some((allowedPrompt) => prompt.label.startsWith(`${allowedPrompt}:`))
+          ) {
             continue;
           }
         }
@@ -533,6 +537,8 @@ class Evaluator {
         prompts.push(completedPrompt);
       }
     }
+
+    logger.debug(`prompts---------------------- ${JSON.stringify(prompts)}`);
 
     // Aggregate all vars across test cases
     let tests =
@@ -633,7 +639,15 @@ class Evaluator {
             for (const provider of testSuite.providers) {
               if (testSuite.providerPromptMap) {
                 const allowedPrompts = testSuite.providerPromptMap[provider.id()];
-                if (allowedPrompts && !allowedPrompts.includes(prompt.label)) {
+                if (
+                  allowedPrompts &&
+                  !(
+                    allowedPrompts.includes(prompt.label) ||
+                    allowedPrompts.some((allowedPrompt) =>
+                      prompt.label.startsWith(`${allowedPrompt}:`),
+                    )
+                  )
+                ) {
                   // This prompt should not be used with this provider.
                   continue;
                 }

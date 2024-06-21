@@ -71,6 +71,8 @@ export async function loadApiProviders(
   } = {},
 ): Promise<ApiProvider[]> {
   const { basePath, env } = options;
+  logger.debug(`Loading providers: ${JSON.stringify(providerPaths)}`);
+
   if (typeof providerPaths === 'string') {
     return [await loadApiProvider(providerPaths, { basePath, env })];
   } else if (typeof providerPaths === 'function') {
@@ -119,7 +121,17 @@ export async function loadApiProvider(
     env?: EnvOverrides;
   } = {},
 ): Promise<ApiProvider> {
+  logger.debug(
+    `-----------------------------\nLoading provider: ${providerPath}\n-----------------------------`,
+  );
+  logger.debug(
+    `-----------------------------\nContext: ${JSON.stringify(context)}\n-----------------------------`,
+  );
+
   const { options = {}, basePath, env } = context;
+  logger.debug(
+    `-----------------------------\nProvider options: ${JSON.stringify(options)}\n-----------------------------`,
+  );
   const providerOptions: ProviderOptions = {
     // Hack(ian): Override id with label. This makes it so that debug and display info, which rely on id, will use the label instead.
     id: options.label || options.id,
