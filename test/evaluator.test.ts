@@ -546,7 +546,7 @@ describe('evaluator', () => {
         tokenUsage: { total: 10, prompt: 5, completion: 5, cached: 0 },
       }),
     };
-  
+
     const testSuite: TestSuite = {
       providers: [mockApiProvider],
       prompts: [
@@ -563,22 +563,18 @@ describe('evaluator', () => {
         },
       ],
     };
-  
+
     const summary = await evaluate(testSuite, {});
-  
+
     expect(mockApiProvider.callApi).toHaveBeenCalledTimes(2);
     expect(summary).toMatchObject({
       stats: {
         successes: 2,
-        failures: 0
+        failures: 0,
       },
-      results: [
-        { prompt: { label: 'prompt1' } },
-        { prompt: { label: 'group1:prompt3' } }
-      ]
+      results: [{ prompt: { label: 'prompt1' } }, { prompt: { label: 'group1:prompt3' } }],
     });
   });
-  
 
   it('evaluate with scenarios', async () => {
     const mockApiProvider: ApiProvider = {
