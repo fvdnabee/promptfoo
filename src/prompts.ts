@@ -98,31 +98,23 @@ export function maybeFilepath(str: string): boolean {
   );
 }
 
-export enum PromptInputType {
-  STRING = 1,
-  ARRAY = 2,
-  NAMED = 3,
-}
-
 /**
  * Loads the contents of a prompt based on its path information.
  * @param {object} promptPathInfo - Object containing raw and resolved path information.
  * @param {Set<string>} forceLoadFromFile - Set of filenames to force loading from file.
  * @param {Map<string, string>} resolvedPathToDisplay - Map of resolved paths to display strings.
  * @param {string} basePath - Base path for resolving file paths.
- * @param {PromptInputType} [inputType] - Optional type of input.
  * @returns {Promise<Prompts>} Promise resolving to the loaded prompts.
  */
 export async function loadPromptContents(
-  promptPathInfo: { raw: string; resolved: string; label?: string },
+  promptPathInfo: { raw: string; resolved?: string; label?: string },
   forceLoadFromFile: Set<string>,
   resolvedPathToDisplay: Map<string, string>,
   basePath: string,
-  inputType?: PromptInputType,
 ): Promise<Prompts> {
   let resolvedPath: string | undefined;
   const promptContents: Prompt[] = [];
-  const parsedPath = path.parse(promptPathInfo.resolved);
+  const parsedPath = path.parse(promptPathInfo.resolved || '');
   let filename = parsedPath.base;
   let functionName: string | undefined;
   const labelPrefix: string = promptPathInfo.label ? `${promptPathInfo.label}: ` : '';
@@ -136,6 +128,12 @@ export async function loadPromptContents(
   const promptPath = path.join(parsedPath.dir, filename);
   const ext = path.parse(promptPath).ext;
 
+  console.warn('promptPathInfo', promptPathInfo, basePath, 'ext', ext);
+
+  if (!promptPathInfo.resolved && !maybeFilepath(promptPathInfo.raw)) {
+    return [{ raw: promptPathInfo.raw, label: promptPathInfo.label as string }];
+  }
+
   let stat;
   try {
     stat = fs.statSync(promptPath);
@@ -145,28 +143,8 @@ export async function loadPromptContents(
     }
   }
 
-  if (!stat) {
-    // If the path doesn't exist, it's probably a raw prompt
-    promptContents.push({ raw: promptPathInfo.raw, label: `${labelPrefix}${promptPathInfo.raw}` });
-    if (maybeFilepath(promptPathInfo.raw)) {
-      // It looks like a filepath, so falling back could be a mistake. Print a warning
-      logger.warn(
-        `Could not find prompt file: "${chalk.red(filename)}". Treating it as a text prompt.`,
-      );
-    }
-  } else if (stat?.isDirectory()) {
-    // FIXME(ian): Make directory handling share logic with file handling.
-    const filesInDirectory = fs.readdirSync(promptPath);
-    const fileContents = filesInDirectory.map((fileName) => {
-      const joinedPath = path.join(promptPath, fileName);
-      resolvedPath = path.resolve(basePath, joinedPath);
-      resolvedPathToDisplay.set(resolvedPath, joinedPath);
-      return fs.readFileSync(resolvedPath, 'utf-8');
-    });
-    promptContents.push(
-      ...fileContents.map((content) => ({ raw: content, label: `${labelPrefix}${content}` })),
-    );
-  } else if (['.js', '.cjs', '.mjs'].includes(ext)) {
+  if (['.js', '.cjs', '.mjs'].includes(ext)) {
+    console.error('importModule', promptPath, functionName);
     const promptFunction = await importModule(promptPath, functionName);
     const resolvedPathLookup = functionName ? `${promptPath}:${functionName}` : promptPath;
     promptContents.push({
@@ -204,10 +182,8 @@ export async function loadPromptContents(
       }
     };
     let label = `${labelPrefix}${fileContent}`;
-    if (inputType === PromptInputType.NAMED) {
-      const resolvedPathLookup = functionName ? `${promptPath}:${functionName}` : promptPath;
-      label = `${labelPrefix}${resolvedPathToDisplay.get(resolvedPathLookup) || resolvedPathLookup}`;
-    }
+    const resolvedPathLookup = functionName ? `${promptPath}:${functionName}` : promptPath;
+    label = `${labelPrefix}${resolvedPathToDisplay.get(resolvedPathLookup) || resolvedPathLookup}`;
     promptContents.push({
       raw: fileContent,
       label,
@@ -227,13 +203,30 @@ export async function loadPromptContents(
     return promptContents as Prompts;
   } else if (ext === '.txt') {
     const fileContent = fs.readFileSync(promptPath, 'utf-8');
-    let label: string | undefined;
-    if (inputType === PromptInputType.NAMED) {
-      label = `${labelPrefix}${resolvedPathToDisplay.get(promptPath) || promptPath}`;
-    } else {
-      label = `${labelPrefix}${fileContent.length > 200 ? promptPath : fileContent}`;
-    }
+    const label = `${labelPrefix}${resolvedPathToDisplay.get(promptPath) || fileContent.length > 200 ? promptPath : fileContent}`;
     promptContents.push({ raw: fileContent, label });
+  } else if (!stat) {
+    console.warn('!stat - loadPromptContents', promptPathInfo);
+    // If the path doesn't exist, it's probably a raw prompt
+    promptContents.push({ raw: promptPathInfo.raw, label: `${labelPrefix}${promptPathInfo.raw}` });
+    if (maybeFilepath(promptPathInfo.raw)) {
+      // It looks like a filepath, so falling back could be a mistake. Print a warning
+      logger.warn(
+        `Could not find prompt file: "${chalk.red(filename)}". Treating it as a text prompt.`,
+      );
+    }
+  } else if (stat?.isDirectory()) {
+    // FIXME(ian): Make directory handling share logic with file handling.
+    const filesInDirectory = fs.readdirSync(promptPath);
+    const fileContents = filesInDirectory.map((fileName) => {
+      const joinedPath = path.join(promptPath, fileName);
+      resolvedPath = path.resolve(basePath, joinedPath);
+      resolvedPathToDisplay.set(resolvedPath, joinedPath);
+      return fs.readFileSync(resolvedPath, 'utf-8');
+    });
+    promptContents.push(
+      ...fileContents.map((content) => ({ raw: content, label: `${labelPrefix}${content}` })),
+    );
   }
   if (promptContents.length === 1 && !promptContents[0]['function']) {
     // Split raw text file into multiple prompts
@@ -247,124 +240,71 @@ export async function loadPromptContents(
   return promptContents as Prompts;
 }
 
-interface NormalizePathsResult {
-  inputType: PromptInputType | undefined;
-  forceLoadFromFile: Set<string>;
-  resolvedPathToDisplay: Map<string, string>;
-  promptPathInfos: { raw: string; resolved: string; label?: string }[];
+interface PromptPathInfo {
+  raw: string;
+  resolved: string;
+  label?: string;
+}
+
+export function normalizePromptInput(promptPathOrGlob: string | Partial<Prompt>): Prompt {
+  if (typeof promptPathOrGlob === 'string') {
+    if (maybeFilepath(promptPathOrGlob)) {
+      return {
+        id: promptPathOrGlob,
+        label: promptPathOrGlob,
+        raw: promptPathOrGlob,
+      };
+    }
+    return { id: promptPathOrGlob, raw: promptPathOrGlob, label: promptPathOrGlob };
+  }
+  const prompt = {
+    ...promptPathOrGlob,
+    label: promptPathOrGlob.label || promptPathOrGlob.id,
+  };
+  invariant(typeof prompt.label === 'string', `Prompt object requires label, but got ${JSON.stringify(prompt)}`);
+  invariant(typeof prompt.id === 'string', `Prompt object requires id, but got ${JSON.stringify(prompt)}`);
+  invariant(typeof prompt.raw === 'string', `Prompt object requires raw, but got ${JSON.stringify(prompt)}`);
+  return prompt as Prompt;
 }
 
 /**
- * Normalizes paths for prompt files or globs based on the given base path.
- * @param {string | (string | Partial<Prompt>)[] | Record<string, string>} promptPathOrGlobs - The prompt path or globs to normalize.
- * @param {string} basePath - The base path for resolving paths.
- * @returns {NormalizePathsResult} The result containing normalized paths and other related information.
+ * Normalizes various formats of prompts into an array of Partial<Prompt> objects.
+ *
+ * @param {string | (string | Partial<Prompt>)[] | Record<string, string | Partial<Prompt>>} promptPathOrGlobs
+ *   - The input which can be a single string, an array of strings or Partial<Prompt> objects, or a record of string or Partial<Prompt> objects.
+ * @returns {Partial<Prompt>[]} - An array of Partial<Prompt> objects with normalized structure.
+ * @throws {Error} - Throws an error if the input format is unsupported.
  */
-export function normalizePaths(
-  promptPathOrGlobs: string | (string | Partial<Prompt>)[] | Record<string, string>,
-  basePath: string,
-): NormalizePathsResult {
-  const forceLoadFromFile = new Set<string>();
-  const resolvedPathToDisplay = new Map<string, string>();
-
-
-  if (typeof promptPathOrGlobs === 'object' && !Array.isArray(promptPathOrGlobs)) {
-    console.warn('promptPathOrGlobs', promptPathOrGlobs);
-    promptPathOrGlobs = Object.values(promptPathOrGlobs);
+export function normalizePromptInputs(
+  promptPathOrGlobs:
+    | string
+    | (string | Partial<Prompt>)[]
+    | Record<string, string | Partial<Prompt>>,
+): Prompt[] {
+  // Handle single prompt or path to file, glob, or function
+  if (typeof promptPathOrGlobs === 'string') {
+    return [normalizePromptInput(promptPathOrGlobs)];
   }
 
-  const promptArrayOrObject: (string | Partial<Prompt>)[] =
-    typeof promptPathOrGlobs === 'string' ? [promptPathOrGlobs] : promptPathOrGlobs;
-
-  let resolvedPath: string;
-
-  if (Array.isArray(promptArrayOrObject) && promptArrayOrObject.length > 0) {
-    // TODO(ian): Handle object array, such as OpenAI messages
-    let inputType: PromptInputType = PromptInputType.ARRAY;
-    const promptPathInfos: { raw: string; resolved: string; label?: string }[] =
-      promptArrayOrObject.flatMap((promptPathOrGlob) => {
-        logger.debug(
-          `-------------------\nNormalizing path or glob: ${JSON.stringify(promptPathOrGlob)}\n-----------------`,
-        );
-        let label: string;
-        let rawPath: string;
-        if (typeof promptPathOrGlob === 'string') {
-          label = promptPathOrGlob;
-          rawPath = promptPathOrGlob;
-          if (rawPath.startsWith('file://')) {
-            rawPath = rawPath.slice('file://'.length);
-            // This path is explicitly marked as a file, ensure that it's not used as a raw prompt.
-            forceLoadFromFile.add(rawPath);
-          }
-        } else if (typeof promptPathOrGlob === 'object') {
-          // Parse prompt config object {id, label}
-          invariant(
-            promptPathOrGlob.label,
-            `Prompt object requires label, but got ${JSON.stringify(promptPathOrGlob)}`,
-          );
-          label = promptPathOrGlob.label;
-          invariant(
-            promptPathOrGlob.id,
-            `Prompt object requires id, but got ${JSON.stringify(promptPathOrGlob)}`,
-          );
-          rawPath = promptPathOrGlob.id;
-          inputType = PromptInputType.NAMED;
-
-          return { raw: rawPath, resolved: resolvedPath };
-        } else {
-          label = promptPathOrGlob;
-          rawPath = promptPathOrGlob;
-        }
-        invariant(
-          typeof rawPath === 'string',
-          `Prompt path must be a string, but got ${JSON.stringify(rawPath)}`,
-        );
-
-        resolvedPath = path.resolve(basePath, rawPath);
-        resolvedPathToDisplay.set(resolvedPath, label);
-        const globbedPaths = globSync(resolvedPath.replace(/\\/g, '/'), {
-          windowsPathsNoEscape: true,
-        });
-        logger.debug(
-          `Expanded prompt ${rawPath} to ${resolvedPath} and then to ${JSON.stringify(globbedPaths)}`,
-        );
-        if (globbedPaths?.length > 0) {
-          return globbedPaths.map((globbedPath) => ({
-            raw: rawPath,
-            resolved: globbedPath,
-            label,
-          }));
-        }
-        // globSync will return empty if no files match, which is the case when the path includes a function name like: file.js:func
-        return { raw: rawPath, resolved: resolvedPath };
-      });
-
-    return {
-      inputType,
-      forceLoadFromFile,
-      resolvedPathToDisplay,
-      promptPathInfos,
-    };
+  // Handle array of strings or Partial<Prompt> objects
+  if (Array.isArray(promptPathOrGlobs)) {
+    return promptPathOrGlobs.map((promptPathOrGlob) => {
+      return normalizePromptInput(promptPathOrGlob);
+    }) as Prompt[];
   }
 
-  if (typeof promptArrayOrObject === 'object') {
-    // Display/contents mapping
-    const promptPathInfos: { raw: string; resolved: string }[] = Object.keys(promptPathOrGlobs).map(
-      (key) => {
-        const resolvedPath = path.resolve(basePath, key);
-        resolvedPathToDisplay.set(resolvedPath, (promptPathOrGlobs as Record<string, string>)[key]);
-        return { raw: key, resolved: resolvedPath };
-      },
-    );
-    return {
-      inputType: PromptInputType.NAMED,
-      forceLoadFromFile,
-      resolvedPathToDisplay,
-      promptPathInfos,
-    };
+  // Handle object with string or Partial<Prompt> values
+  if (typeof promptPathOrGlobs === 'object') {
+    return Object.entries(promptPathOrGlobs).map(([id, promptOrString]) => {
+      const prompt = normalizePromptInput(promptOrString);
+      return {
+        ...prompt,
+        label: `${id}: ${prompt.label}`,
+      };
+    }) as Prompt[];
   }
 
-  throw new Error(`Unsupported prompt path type: ${JSON.stringify(promptPathOrGlobs)}`);
+  throw new Error(`Unsupported prompt type: ${JSON.stringify(promptPathOrGlobs)}`);
 }
 
 /**
@@ -378,13 +318,43 @@ export async function readPrompts(
   basePath: string = '',
 ): Promise<Prompts> {
   logger.debug(`Reading prompts from ${JSON.stringify(promptPathOrGlobs)}`);
+  const promptArray = normalizePromptInputs(promptPathOrGlobs);
 
-  const {
-    forceLoadFromFile,
-    inputType,
-    promptPathInfos,
-    resolvedPathToDisplay,
-  }: NormalizePathsResult = normalizePaths(promptPathOrGlobs, basePath);
+  const forceLoadFromFile = new Set<string>();
+  const resolvedPathToDisplay = new Map<string, string>();
+
+  // TODO(ian): Handle object array, such as OpenAI messages
+  const promptPathInfos: PromptPathInfo[] = promptArray.flatMap((prompt) => {
+    logger.debug(
+      `-------------------\nNormalizing path or glob: ${JSON.stringify(prompt)}\n-----------------`,
+    );
+    let rawPath: string = prompt.id as string;
+    const label: string = prompt.label;
+    if (rawPath.startsWith('file://')) {
+      rawPath = rawPath.slice('file://'.length);
+      // This path is explicitly marked as a file, ensure that it's not used as a raw prompt.
+      forceLoadFromFile.add(rawPath);
+    } else {
+      return { raw: rawPath, label };
+    }
+
+    const resolvedPath: string = path.resolve(basePath, rawPath);
+    resolvedPathToDisplay.set(resolvedPath, label);
+    const globbedPaths = globSync(resolvedPath.replace(/\\/g, '/'), {
+      windowsPathsNoEscape: true,
+    });
+    logger.debug(
+      `Expanded prompt ${rawPath} to ${resolvedPath} and then to ${JSON.stringify(globbedPaths)}`,
+    );
+    if (globbedPaths?.length > 0) {
+      return globbedPaths.map((globbedPath) => ({
+        raw: rawPath,
+        resolved: globbedPath,
+        label,
+      }));
+    }
+    return { raw: rawPath, resolved: resolvedPath, label };
+  });
 
   logger.debug(`Resolved prompt paths: ${JSON.stringify(promptPathInfos)}`);
 
@@ -397,7 +367,6 @@ export async function readPrompts(
         forceLoadFromFile,
         resolvedPathToDisplay,
         basePath,
-        inputType,
       )),
     );
   }

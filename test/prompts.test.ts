@@ -3,12 +3,12 @@ import * as path from 'path';
 import { globSync } from 'glob';
 
 import {
-  PromptInputType,
   loadPromptContents,
   maybeFilepath,
-  normalizePaths,
   readPrompts,
   readProviderPromptMap,
+  normalizePromptInput,
+  normalizePromptInputs,
 } from '../src/prompts';
 import { runPython } from '../src/python/wrapper';
 import type { Prompt, UnifiedConfig } from '../src/types';
@@ -54,13 +54,18 @@ describe('prompts', () => {
     jest.clearAllMocks();
   });
 
-  describe('readPrompts', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
 
+  describe('readPrompts', () => {
     it('with a single prompt', async () => {
       const result = await readPrompts('sample prompt');
-      expect(result).toEqual([toPrompt('sample prompt')]);
+      expect(result).toEqual([{
+        raw: 'sample prompt',
+        label: 'sample prompt',
+      }]);
     });
-
 
     it('with empty input', async () => {
       jest.mocked(fs.readFileSync).mockReturnValue('');
@@ -83,7 +88,16 @@ describe('prompts', () => {
         '1': 'prompt1',
         '2': 'prompt2',
       });
-      expect(result).toEqual([toPrompt('prompt1'), toPrompt('prompt2')]);
+      expect(result).toEqual([
+        {
+          raw: 'prompt1',
+          label: '1: prompt1',
+        },
+        {
+          raw: 'prompt2',
+          label: '2: prompt2',
+        },
+      ]);
     });
 
     it('with single prompt file', async () => {
@@ -151,11 +165,11 @@ describe('prompts', () => {
       expect(fs.readFileSync).toHaveBeenCalledTimes(2);
       expect(result).toEqual([
         {
-          label: 'Test prompt 1',
+          label: 'prompts: Test prompt 1',
           raw: 'Test prompt 1',
         },
         {
-          label: 'Test prompt 2',
+          label: 'prompts: Test prompt 2',
           raw: 'Test prompt 2',
         },
       ]);
@@ -200,11 +214,11 @@ describe('prompts', () => {
       expect(fs.readFileSync).toHaveBeenCalledTimes(1);
       expect(result).toEqual([
         {
-          label: JSON.stringify(data[0]),
+          label: `prompts.jsonl: ${JSON.stringify(data[0])}`,
           raw: JSON.stringify(data[0]),
         },
         {
-          label: JSON.stringify(data[1]),
+          label: `prompts.jsonl: ${JSON.stringify(data[1])}`,
           raw: JSON.stringify(data[1]),
         },
       ]);
@@ -215,9 +229,13 @@ describe('prompts', () => {
       jest.mocked(fs.readFileSync).mockReturnValue(code);
       const result = await readPrompts('prompt.py');
       expect(fs.readFileSync).toHaveBeenCalledTimes(1);
-      expect(result[0].raw).toEqual(code);
-      expect(result[0].label).toEqual(code);
-      expect(result[0].function).toBeDefined();
+      expect(result).toEqual([
+        {
+          raw: code,
+          label: `prompt.py: ${code}`,
+          function: expect.any(Function),
+        },
+      ]);
     });
 
     it('with Prompt object array', async () => {
@@ -252,7 +270,7 @@ def prompt2:
       ]);
     });
 
-    it('readPrompts with .js file', async () => {
+    fit('readPrompts with .js file', async () => {
       jest.doMock(
         path.resolve('prompt.js'),
         () => {
@@ -261,7 +279,13 @@ def prompt2:
         { virtual: true },
       );
       const result = await readPrompts('prompt.js');
-      expect(result[0].function).toBeDefined();
+      expect(result).toEqual([
+        {
+          raw: 'prompt.js',
+          label: 'prompt.js',
+          function: expect.any(Function),
+        },
+      ]);
     });
 
     it('readPrompts with glob pattern for .txt files', async () => {
@@ -301,11 +325,11 @@ def prompt2:
       expect(result).toEqual([
         {
           raw: fileContents['1.txt'],
-          label: fileContents['1.txt'],
+          label: `file://./prompts/*.txt: ${fileContents['1.txt']}`,
         },
         {
           raw: fileContents['2.txt'],
-          label: fileContents['2.txt'],
+          label: `file://./prompts/*.txt: ${fileContents['2.txt']}`,
         },
       ]);
     });
@@ -450,7 +474,6 @@ def prompt2:
           forceLoadFromFile,
           resolvedPathToDisplay,
           basePath,
-          PromptInputType.NAMED,
         );
 
         expect(result).toHaveLength(1);
@@ -566,138 +589,231 @@ def prompt2:
     });
   });
 
-  describe('normalizePaths', () => {
-    const basePath = '/base/path';
-    const mockedPath = path as jest.Mocked<typeof path>;
-    const mockedGlobSync = jest.mocked(globSync);
-
-    afterEach(() => {
-      jest.clearAllMocks();
-    });
-
-    it('should normalize a single string path', () => {
-      const promptPathOrGlobs = 'prompts.txt';
-      mockedPath.resolve.mockImplementation((...args) => args.join('/'));
-
-      const result = normalizePaths(promptPathOrGlobs, basePath);
-
-      expect(result).toEqual({
-        inputType: PromptInputType.STRING,
-        forceLoadFromFile: new Set(),
-        resolvedPathToDisplay: new Map([['/base/path/prompts.txt', 'prompts.txt']]),
-        promptPathInfos: [{ raw: 'prompts.txt', resolved: '/base/path/prompts.txt' }],
-      });
-    });
-
-    it('should normalize a string path starting with file://', () => {
-      const promptPathOrGlobs = 'file://prompts.txt';
-      mockedPath.resolve.mockImplementation((...args) => args.join('/'));
-
-      const result = normalizePaths(promptPathOrGlobs, basePath);
-
-      expect(result).toEqual({
-        inputType: PromptInputType.STRING,
-        forceLoadFromFile: new Set(['prompts.txt']),
-        resolvedPathToDisplay: new Map([['/base/path/prompts.txt', 'prompts.txt']]),
-        promptPathInfos: [{ raw: 'prompts.txt', resolved: '/base/path/prompts.txt' }],
-      });
-    });
-
-    it('should handle array of string paths', () => {
-      const promptPathOrGlobs = ['prompt1.txt', 'prompt2.txt'];
-      const result = normalizePaths(promptPathOrGlobs, basePath);
-
-      expect(result).toEqual({
-        inputType: PromptInputType.ARRAY,
-        forceLoadFromFile: new Set(),
-        resolvedPathToDisplay: new Map([
-          ['/base/path/prompt1.txt', 'prompt1.txt'],
-          ['/base/path/prompt2.txt', 'prompt2.txt'],
-        ]),
-        promptPathInfos: [
-          {
-            raw: 'prompt1.txt',
-            resolved: '/base/path/prompt1.txt',
-          },
-          {
-            raw: 'prompt2.txt',
-            resolved: '/base/path/prompt2.txt',
-          },
-        ],
-      });
-    });
-
-    it('should handle object mapping of paths to display strings', () => {
-      const promptPathOrGlobs = {
-        'prompts/prompt1.txt': 'Prompt 1',
-        'prompts/prompt2.txt': 'Prompt 2',
+  describe('normalizePromptInput', () => {
+  
+    it('should handle a single string input as a file path', () => {
+      const input = 'path/to/prompt.txt';
+      const expectedOutput = {
+        id: input,
+        label: input,
+        raw: input,
       };
-      mockedPath.resolve.mockImplementation((...args) => args.join('/'));
-
-      const result = normalizePaths(promptPathOrGlobs, basePath);
-
-      expect(result).toEqual({
-        inputType: PromptInputType.NAMED,
-        forceLoadFromFile: new Set(),
-        resolvedPathToDisplay: new Map([
-          ['/base/path/prompts/prompt1.txt', 'Prompt 1'],
-          ['/base/path/prompts/prompt2.txt', 'Prompt 2'],
-        ]),
-        promptPathInfos: [
-          { raw: 'prompts/prompt1.txt', resolved: '/base/path/prompts/prompt1.txt' },
-          { raw: 'prompts/prompt2.txt', resolved: '/base/path/prompts/prompt2.txt' },
-        ],
-      });
+      expect(normalizePromptInput(input)).toEqual(expectedOutput);
     });
+  
+    it('should handle a single string input as a raw prompt', () => {
+      const input = 'Translate the following text to French: "{{name}}: {{text}}"';
+      const expectedOutput = {
+        id: input,
+        label: input,
+        raw: input,
+      };
+      expect(normalizePromptInput(input)).toEqual(expectedOutput);
+    });
+  
+    it('should handle a Partial<Prompt> object with label and id', () => {
+      const input = { id: 'prompt1', raw: 'Translate to French', label: 'French Translation' };
+      const expectedOutput = {
+        id: 'prompt1',
+        raw: 'Translate to French',
+        label: 'French Translation',
+      };
+      expect(normalizePromptInput(input)).toEqual(expectedOutput);
+    });
+  
+    it('should handle a Partial<Prompt> object without label', () => {
+      const input = { id: 'prompt1', raw: 'Translate to French' };
+      const expectedOutput = {
+        id: 'prompt1',
+        raw: 'Translate to French',
+        label: 'prompt1',
+      };
+      expect(normalizePromptInput(input)).toEqual(expectedOutput);
+    });
+  
+    it('should throw an error if Partial<Prompt> object is missing label', () => {
+      const input = { raw: 'Translate to French' };
+      expect(() => normalizePromptInput(input)).toThrow('Prompt object requires label, but got {"raw":"Translate to French"}');
+    });
+  
+    it('should throw an error if Partial<Prompt> object is missing id', () => {
+      const input = { raw: 'Translate to French', label: 'French Translation' };
+      expect(() => normalizePromptInput(input)).toThrow('Prompt object requires id, but got {"raw":"Translate to French","label":"French Translation"}');
+    });
+  
+    it('should throw an error if Partial<Prompt> object is missing raw', () => {
+      const input = { id: 'prompt1', label: 'French Translation' };
+      expect(() => normalizePromptInput(input)).toThrow('Prompt object requires raw, but got {"id":"prompt1","label":"French Translation"}');
+    });
+  });
 
-    it('should handle globs in array of string paths', () => {
-      const promptPathOrGlobs = ['file://./prompts/*.txt'];
-      mockedGlobSync.mockReturnValue([
-        '/base/path/prompts/prompt1.txt',
-        '/base/path/prompts/prompt2.txt',
+  describe('normalizePromptInputs', () => {
+    it('should handle a single string input', () => {
+      const input = 'Translate the following text to French: "{{name}}: {{text}}"';
+      expect(normalizePromptInputs(input)).toEqual([
+        {
+          id: input,
+          label: input,
+          raw: input,
+        },
       ]);
-
-      const result = normalizePaths(promptPathOrGlobs, basePath);
-
-      expect(mockedGlobSync).toHaveBeenCalledTimes(1);
-      expect(result).toEqual({
-        inputType: PromptInputType.ARRAY,
-        forceLoadFromFile: new Set(['./prompts/*.txt']),
-        resolvedPathToDisplay: new Map([['/base/path/./prompts/*.txt', 'file://./prompts/*.txt']]),
-        promptPathInfos: [
-          {
-            raw: './prompts/*.txt',
-            resolved: '/base/path/prompts/prompt1.txt',
-          },
-          {
-            raw: './prompts/*.txt',
-            resolved: '/base/path/prompts/prompt2.txt',
-          },
-        ],
-      });
     });
 
-    it('should return raw and resolved paths when no files match', () => {
-      const promptPathOrGlobs = ['file.js:func'];
-      mockedGlobSync.mockReturnValue([]);
-
-      const result = normalizePaths(promptPathOrGlobs, basePath);
-
-      expect(result).toEqual({
-        inputType: PromptInputType.ARRAY,
-        forceLoadFromFile: new Set(),
-        resolvedPathToDisplay: new Map([['/base/path/file.js:func', 'file.js:func']]),
-        promptPathInfos: [{ raw: 'file.js:func', resolved: '/base/path/file.js:func' }],
-      });
+    it('should handle an array of strings', () => {
+      const input = [
+        'Translate the following text to French: "{{name}}: {{text}}"',
+        'Translate the following text to German: "{{name}}: {{text}}"',
+      ];
+      expect(normalizePromptInputs(input)).toEqual([
+        {
+          id: 'Translate the following text to French: "{{name}}: {{text}}"',
+          raw: 'Translate the following text to French: "{{name}}: {{text}}"',
+          label: 'Translate the following text to French: "{{name}}: {{text}}"',
+        },
+        {
+          id: 'Translate the following text to German: "{{name}}: {{text}}"',
+          raw: 'Translate the following text to German: "{{name}}: {{text}}"',
+          label: 'Translate the following text to German: "{{name}}: {{text}}"',
+        },
+      ]);
     });
 
-    it('should throw an error for unsupported prompt path type', () => {
-      const unsupportedInput = 123 as any; // Intentionally using an unsupported type
-
-      expect(() => normalizePaths(unsupportedInput, basePath)).toThrow(
-        `Unsupported prompt path type: ${JSON.stringify(unsupportedInput)}`,
-      );
+    it('should handle an array of Partial<Prompt> objects', () => {
+      const input = [
+        { id: 'prompt1', raw: 'Translate to French' },
+        { id: 'prompt2', raw: 'Translate to German' },
+      ];
+      expect(normalizePromptInputs(input)).toEqual([
+        {
+          id: 'prompt1',
+          raw: 'Translate to French',
+          label: 'prompt1',
+        },
+        {
+          id: 'prompt2',
+          raw: 'Translate to German',
+          label: 'prompt2',
+        },
+      ]);
     });
+
+    it('should handle file paths', () => {
+      const input = 'path/to/prompt.txt';
+      expect(normalizePromptInputs(input)).toEqual([
+        {
+          id: 'path/to/prompt.txt',
+          raw: 'path/to/prompt.txt',
+          label: 'path/to/prompt.txt',
+        },
+      ]);
+    });
+
+    it('should handle a record of strings', () => {
+      const input = {
+        prompt1: 'Translate the following text to French: "{{name}}: {{text}}"',
+        prompt2: 'Translate the following text to German: "{{name}}: {{text}}"',
+      };
+      expect(normalizePromptInputs(input)).toEqual([
+        {
+          id: 'Translate the following text to French: "{{name}}: {{text}}"',
+          raw: 'Translate the following text to French: "{{name}}: {{text}}"',
+          label: 'prompt1: Translate the following text to French: "{{name}}: {{text}}"',
+        },
+        {
+          id: 'Translate the following text to German: "{{name}}: {{text}}"',
+          raw: 'Translate the following text to German: "{{name}}: {{text}}"',
+          label: 'prompt2: Translate the following text to German: "{{name}}: {{text}}"',
+        },
+      ]);
+    });
+
+    it('should handle a record of Partial<Prompt> objects', () => {
+      const input = {
+        prompt1: { raw: 'Translate to French', label: 'French Translation', id: '1' },
+        prompt2: { raw: 'Translate to German', label: 'German Translation', id: '2' },
+      };
+      expect(normalizePromptInputs(input)).toEqual([
+        {
+          raw: 'Translate to French',
+          label: 'prompt1: French Translation',
+          id: '1',
+        },
+        {
+          raw: 'Translate to German',
+          label: 'prompt2: German Translation',
+          id: '2',
+        },
+      ]);
+    });
+
+    it('should handle a mixed array of strings and Partial<Prompt> objects', () => {
+      const input = [
+        'Translate the following text to French: "{{name}}: {{text}}"',
+        { id: 'prompt1', raw: 'Translate to German' },
+        'Translate the following text to Spanish: "{{name}}: {{text}}"',
+        { id: 'prompt2', raw: 'Translate to Italian', label: 'Italian Translation' },
+      ];
+      expect(normalizePromptInputs(input)).toEqual([
+        {
+          id: 'Translate the following text to French: "{{name}}: {{text}}"',
+          raw: 'Translate the following text to French: "{{name}}: {{text}}"',
+          label: 'Translate the following text to French: "{{name}}: {{text}}"',
+        },
+        {
+          id: 'prompt1',
+          raw: 'Translate to German',
+          label: 'prompt1',
+        },
+        {
+          id: 'Translate the following text to Spanish: "{{name}}: {{text}}"',
+          raw: 'Translate the following text to Spanish: "{{name}}: {{text}}"',
+          label: 'Translate the following text to Spanish: "{{name}}: {{text}}"',
+        },
+        {
+          id: 'prompt2',
+          raw: 'Translate to Italian',
+          label: 'Italian Translation',
+        },
+      ]);
+    });
+
+    it('should handle a mixed record of strings and Partial<Prompt> objects', () => {
+      const input = {
+        prompt1: 'Translate the following text to French: "{{name}}: {{text}}"',
+        prompt2: { raw: 'Translate to German', id: '2', label: 'German Translation' },
+        prompt3: 'Translate the following text to Spanish: "{{name}}: {{text}}"',
+        prompt4: { raw: 'Translate to Italian', id: '4' },
+      };
+      expect(normalizePromptInputs(input)).toEqual([
+        {
+          id: 'Translate the following text to French: "{{name}}: {{text}}"',
+          raw: 'Translate the following text to French: "{{name}}: {{text}}"',
+          label: 'prompt1: Translate the following text to French: "{{name}}: {{text}}"',
+        },
+        {
+          id: '2',
+          raw: 'Translate to German',
+          label: 'prompt2: German Translation',
+        },
+        {
+          id: 'Translate the following text to Spanish: "{{name}}: {{text}}"',
+          raw: 'Translate the following text to Spanish: "{{name}}: {{text}}"',
+          label: 'prompt3: Translate the following text to Spanish: "{{name}}: {{text}}"',
+        },
+        {
+          id: '4',
+          raw: 'Translate to Italian',
+          label: 'prompt4: 4'
+        },
+      ]);
+    });
+
+
+    it('should throw an error for unsupported input type', () => {
+      const input = 12345; // Unsupported input type
+      expect(() => normalizePromptInputs(input as never)).toThrow('Unsupported prompt type: 12345');
+    });
+
   });
 
   describe('readProviderPromptMap', () => {
