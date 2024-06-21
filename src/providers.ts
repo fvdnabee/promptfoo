@@ -4,7 +4,40 @@ import path from 'path';
 import invariant from 'tiny-invariant';
 import yaml from 'js-yaml';
 
+import { importModule } from './esm';
 import logger from './logger';
+
+import { AnthropicCompletionProvider, AnthropicMessagesProvider } from './providers/anthropic';
+import {
+  AzureOpenAiAssistantProvider,
+  AzureOpenAiChatCompletionProvider,
+  AzureOpenAiCompletionProvider,
+  AzureOpenAiEmbeddingProvider,
+} from './providers/azureopenai';
+import { BAMChatProvider, BAMEmbeddingProvider } from './providers/bam';
+import { AwsBedrockCompletionProvider, AwsBedrockEmbeddingProvider } from './providers/bedrock';
+import * as CloudflareAiProviders from './providers/cloudflare-ai';
+import { CohereChatCompletionProvider } from './providers/cohere';
+import {
+  HuggingfaceFeatureExtractionProvider,
+  HuggingfaceSentenceSimilarityProvider,
+  HuggingfaceTextClassificationProvider,
+  HuggingfaceTextGenerationProvider,
+  HuggingfaceTokenExtractionProvider,
+} from './providers/huggingface';
+import { HttpProvider } from './providers/http';
+import { LlamaProvider } from './providers/llama';
+import {
+  LocalAiCompletionProvider,
+  LocalAiChatProvider,
+  LocalAiEmbeddingProvider,
+} from './providers/localai';
+import { MistralChatCompletionProvider } from './providers/mistral';
+import {
+  OllamaEmbeddingProvider,
+  OllamaCompletionProvider,
+  OllamaChatProvider,
+} from './providers/ollama';
 import {
   OpenAiAssistantProvider,
   OpenAiCompletionProvider,
@@ -13,45 +46,14 @@ import {
   OpenAiImageProvider,
   OpenAiModerationProvider,
 } from './providers/openai';
-import { AnthropicCompletionProvider, AnthropicMessagesProvider } from './providers/anthropic';
-import { ReplicateModerationProvider, ReplicateProvider } from './providers/replicate';
-import {
-  LocalAiCompletionProvider,
-  LocalAiChatProvider,
-  LocalAiEmbeddingProvider,
-} from './providers/localai';
 import { PalmChatProvider } from './providers/palm';
-import { LlamaProvider } from './providers/llama';
-import {
-  OllamaEmbeddingProvider,
-  OllamaCompletionProvider,
-  OllamaChatProvider,
-} from './providers/ollama';
-import { VertexChatProvider } from './providers/vertex';
-import { MistralChatCompletionProvider } from './providers/mistral';
-import { WebhookProvider } from './providers/webhook';
-import { ScriptCompletionProvider } from './providers/scriptCompletion';
-import {
-  AzureOpenAiAssistantProvider,
-  AzureOpenAiChatCompletionProvider,
-  AzureOpenAiCompletionProvider,
-  AzureOpenAiEmbeddingProvider,
-} from './providers/azureopenai';
-import {
-  HuggingfaceFeatureExtractionProvider,
-  HuggingfaceSentenceSimilarityProvider,
-  HuggingfaceTextClassificationProvider,
-  HuggingfaceTextGenerationProvider,
-  HuggingfaceTokenExtractionProvider,
-} from './providers/huggingface';
-import { AwsBedrockCompletionProvider, AwsBedrockEmbeddingProvider } from './providers/bedrock';
-import { PythonProvider } from './providers/pythonCompletion';
-import { CohereChatCompletionProvider } from './providers/cohere';
-import * as CloudflareAiProviders from './providers/cloudflare-ai';
-import { BAMChatProvider, BAMEmbeddingProvider } from './providers/bam';
 import { PortkeyChatCompletionProvider } from './providers/portkey';
-import { HttpProvider } from './providers/http';
-import { importModule } from './esm';
+import { PythonProvider } from './providers/pythonCompletion';
+import { ReplicateModerationProvider, ReplicateProvider } from './providers/replicate';
+import { ScriptCompletionProvider } from './providers/scriptCompletion';
+import { VertexChatProvider } from './providers/vertex';
+import { VoyageEmbeddingProvider } from './providers/voyage';
+import { WebhookProvider } from './providers/webhook';
 
 import type {
   ApiProvider,
@@ -60,7 +62,6 @@ import type {
   ProviderOptionsMap,
   TestSuiteConfig,
 } from './types';
-import { VoyageEmbeddingProvider } from './providers/voyage';
 
 export async function loadApiProviders(
   providerPaths: TestSuiteConfig['providers'],
