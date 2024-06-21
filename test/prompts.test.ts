@@ -64,7 +64,16 @@ describe('prompts', () => {
       const result = await readPrompts(promptPaths);
 
       expect(fs.readFileSync).toHaveBeenCalledTimes(1);
-      expect(result).toEqual([toPrompt('Test prompt 1'), toPrompt('Test prompt 2')]);
+      expect(result).toEqual([
+        {
+          label: 'prompts.txt: Test prompt 1',
+          raw: 'Test prompt 1',
+        },
+        {
+          label: 'prompts.txt: Test prompt 2',
+          raw: 'Test prompt 2',
+        },
+      ]);
     });
 
     it('with multiple prompt files', async () => {
@@ -79,7 +88,16 @@ describe('prompts', () => {
       const result = await readPrompts(promptPaths);
 
       expect(fs.readFileSync).toHaveBeenCalledTimes(2);
-      expect(result).toEqual([toPrompt('Test prompt 1'), toPrompt('Test prompt 2')]);
+      expect(result).toEqual([
+        {
+          label: 'prompt1.txt: Test prompt 1',
+          raw: 'Test prompt 1',
+        },
+        {
+          label: 'prompt2.txt: Test prompt 2',
+          raw: 'Test prompt 2',
+        },
+      ]);
     });
 
     it('with directory', async () => {
@@ -100,7 +118,16 @@ describe('prompts', () => {
       expect(fs.statSync).toHaveBeenCalledTimes(1);
       expect(fs.readdirSync).toHaveBeenCalledTimes(1);
       expect(fs.readFileSync).toHaveBeenCalledTimes(2);
-      expect(result).toEqual([toPrompt('Test prompt 1'), toPrompt('Test prompt 2')]);
+      expect(result).toEqual([
+        {
+          label: 'prompts: Test prompt 1',
+          raw: 'Test prompt 1',
+        },
+        {
+          label: 'prompts: Test prompt 2',
+          raw: 'Test prompt 2',
+        },
+      ]);
     });
 
     it('with empty input', async () => {
@@ -111,7 +138,12 @@ describe('prompts', () => {
       const result = await readPrompts(promptPaths);
 
       expect(fs.readFileSync).toHaveBeenCalledTimes(1);
-      expect(result).toEqual([toPrompt('')]);
+      expect(result).toEqual([
+        {
+          label: 'prompts.txt: ',
+          raw: '',
+        },
+      ]);
     });
 
     it('with map input', async () => {
@@ -152,8 +184,14 @@ describe('prompts', () => {
 
       expect(fs.readFileSync).toHaveBeenCalledTimes(1);
       expect(result).toEqual([
-        toPrompt(JSON.stringify(data[0])),
-        toPrompt(JSON.stringify(data[1])),
+        {
+          label: 'prompts.jsonl: ' + JSON.stringify(data[0]),
+          raw: JSON.stringify(data[0]),
+        },
+        {
+          label: 'prompts.jsonl: ' + JSON.stringify(data[1]),
+          raw: JSON.stringify(data[1]),
+        },
       ]);
     });
 
@@ -188,12 +226,12 @@ def prompt2:
       expect(result).toEqual([
         {
           raw: code,
-          label: 'First prompt',
+          label: 'First prompt: First prompt',
           function: expect.any(Function),
         },
         {
           raw: code,
-          label: 'Second prompt',
+          label: 'Second prompt: Second prompt',
           function: expect.any(Function),
         },
       ]);
@@ -245,9 +283,16 @@ def prompt2:
       expect(fs.readdirSync).toHaveBeenCalledTimes(1);
       expect(fs.readFileSync).toHaveBeenCalledTimes(2);
       expect(fs.statSync).toHaveBeenCalledTimes(1);
-      expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({ raw: fileContents['1.txt'], label: fileContents['1.txt'] });
-      expect(result[1]).toEqual({ raw: fileContents['2.txt'], label: fileContents['2.txt'] });
+      expect(result).toEqual([
+        {
+          raw: fileContents['1.txt'],
+          label: `${promptPaths[0]}: ${fileContents['1.txt']}`,
+        },
+        {
+          raw: fileContents['2.txt'],
+          label: `${promptPaths[0]}: ${fileContents['2.txt']}`,
+        },
+      ]);
     });
   });
 
@@ -559,12 +604,12 @@ def prompt2:
           {
             raw: 'prompt1.txt',
             resolved: '/base/path/prompt1.txt',
-            // label: 'prompt1.txt',
+            label: 'prompt1.txt',
           },
           {
             raw: 'prompt2.txt',
             resolved: '/base/path/prompt2.txt',
-            // label: 'prompt2.txt',
+            label: 'prompt2.txt',
           },
         ],
       });
@@ -608,8 +653,16 @@ def prompt2:
         forceLoadFromFile: new Set(['./prompts/*.txt']),
         resolvedPathToDisplay: new Map([['/base/path/./prompts/*.txt', 'file://./prompts/*.txt']]),
         promptPathInfos: [
-          { raw: './prompts/*.txt', resolved: '/base/path/prompts/prompt1.txt' },
-          { raw: './prompts/*.txt', resolved: '/base/path/prompts/prompt2.txt' },
+          {
+            label: 'file://./prompts/*.txt',
+            raw: './prompts/*.txt',
+            resolved: '/base/path/prompts/prompt1.txt',
+          },
+          {
+            label: 'file://./prompts/*.txt',
+            raw: './prompts/*.txt',
+            resolved: '/base/path/prompts/prompt2.txt',
+          },
         ],
       });
     });
