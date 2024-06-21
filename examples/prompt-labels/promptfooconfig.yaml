@@ -1,32 +1,28 @@
 prompts:
-  # - file://prompts1.txt
-  # - file://prompts2.txt
   - id: file://prompts1.txt
-    label: a
+    label: content_generation
   - id: file://prompts2.txt
-    label: b
+    label: knowledge_base_query
 
 providers:
   - id: openai:gpt-4o
     label: 4o
     prompts:
-      - a
-    #  - b
+      - content_generation
   - id: openai:gpt-3.5-turbo
     label: '3.5'
     prompts:
-      #  - a
-      - b
+      - knowledge_base_query
 
 tests:
   - vars:
-      topic: large language models
+      topic: machine learning trends
     assert:
       - type: select-best
-        value: choose the tweet most likely to lead to AGI
+        value: Choose the response that most effectively generates a comprehensive overview of current machine learning trends.
 
   - vars:
-      topic: nyc
+      topic: transformer models
     assert:
       - type: select-best
-        value: choose the tweet that contains the most silly facts
+        value: Choose the response that provides the most accurate and detailed information about transformer models from the knowledge base.
