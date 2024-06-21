@@ -12,8 +12,13 @@ import {
 } from '../src/prompts';
 
 import type { Prompt, UnifiedConfig } from '../src/types';
+import { runPython } from '../src/python/wrapper';
 
 jest.mock('../src/esm');
+jest.mock('../src/python/wrapper', () => ({
+  runPython: jest.fn(),
+}));
+jest.mock('../src/database');
 
 jest.mock('proxy-agent', () => ({
   ProxyAgent: jest.fn().mockImplementation(() => ({})),
@@ -40,8 +45,6 @@ jest.mock('path', () => {
     resolve: jest.fn(actual.resolve),
   };
 });
-
-jest.mock('../src/database');
 
 function toPrompt(text: string): Prompt {
   return { raw: text, label: text };
@@ -334,6 +337,60 @@ def prompt2:
       expect(result[0].function).toBeInstanceOf(Function);
     });
 
+    describe.skip('python', () => {
+      const basePath = '/base/path';
+      const promptPathInfo = { raw: 'rawPrompt', resolved: '/resolved/path/prompt.py' };
+      const forceLoadFromFile = new Set<string>();
+      const resolvedPathToDisplay = new Map<string, string>();
+
+      const mockedFs = fs as jest.Mocked<typeof fs>;
+      const mockedPath = path as jest.Mocked<typeof path>;
+      const mockedRunPython = jest.mocked(runPython);
+
+      it('should handle Python prompt files', async () => {
+        const fileContent = `print('dummy prompt')`;
+        mockedFs.readFileSync.mockReturnValue(fileContent);
+        mockedFs.statSync.mockReturnValue({ isDirectory: () => false } as fs.Stats);
+        mockedPath.parse.mockReturnValue({
+          base: 'prompt.py',
+          dir: '/resolved/path',
+          ext: '.py',
+          name: 'prompt',
+          root: '/',
+        });
+
+        const result = await loadPromptContents(
+          promptPathInfo,
+          forceLoadFromFile,
+          resolvedPathToDisplay,
+          basePath,
+          PromptInputType.NAMED,
+        );
+
+        expect(result).toHaveLength(1);
+        expect(result[0].raw).toBe(fileContent);
+        expect(result[0].label).toBe('/resolved/path/prompt.py');
+        expect(result[0].function).toBeInstanceOf(Function);
+
+        // Test the function to ensure it calls runPython correctly
+        const context = {
+          vars: { test: 'data' },
+          provider: { id: 'provider1', label: 'Provider 1' },
+        };
+        await result[0].function(context);
+
+        expect(mockedRunPython).toHaveBeenCalledWith('/resolved/path/prompt.py', undefined, [
+          {
+            ...context,
+            provider: {
+              id: context.provider?.id,
+              label: context.provider?.label,
+            },
+          },
+        ]);
+      });
+    });
+
     it('should handle JSONL prompt files', async () => {
       mockedFs.statSync.mockReturnValue({ isDirectory: () => false } as fs.Stats);
       mockedFs.readFileSync.mockReturnValue('{"key1": "value1"}\n{"key2": "value2"}');
@@ -405,8 +462,24 @@ def prompt2:
 
       delete process.env.PROMPTFOO_STRICT_FILES;
     });
+
+    it('should throw an error if no prompts are found', async () => {
+      jest.spyOn(fs, 'readFileSync').mockReturnValue('');
+      jest.spyOn(fs, 'statSync').mockReturnValue({ isDirectory: () => false } as fs.Stats);
+      jest.spyOn(path, 'parse').mockReturnValue({
+        base: 'prompt.jsonl',
+        dir: '/resolved/path',
+        ext: '.jsonl',
+        name: 'prompt',
+        root: '/',
+      });
+
+      await expect(
+        loadPromptContents(promptPathInfo, forceLoadFromFile, resolvedPathToDisplay, basePath),
+      ).rejects.toThrow(`There are no prompts in ${JSON.stringify(promptPathInfo)}`);
+    });
   });
-  
+
   describe('normalizePaths', () => {
     const basePath = '/base/path';
     const mockedPath = path as jest.Mocked<typeof path>;
@@ -415,13 +488,13 @@ def prompt2:
     afterEach(() => {
       jest.clearAllMocks();
     });
-  
+
     it('should normalize a single string path', () => {
       const promptPathOrGlobs = 'prompts.txt';
       mockedPath.resolve.mockImplementation((...args) => args.join('/'));
-  
+
       const result = normalizePaths(promptPathOrGlobs, basePath);
-  
+
       expect(result).toEqual({
         inputType: PromptInputType.STRING,
         forceLoadFromFile: new Set(),
@@ -429,13 +502,13 @@ def prompt2:
         promptPathInfos: [{ raw: 'prompts.txt', resolved: '/base/path/prompts.txt' }],
       });
     });
-  
+
     it('should normalize a string path starting with file://', () => {
       const promptPathOrGlobs = 'file://prompts.txt';
       mockedPath.resolve.mockImplementation((...args) => args.join('/'));
-  
+
       const result = normalizePaths(promptPathOrGlobs, basePath);
-  
+
       expect(result).toEqual({
         inputType: PromptInputType.STRING,
         forceLoadFromFile: new Set(['prompts.txt']),
@@ -443,11 +516,11 @@ def prompt2:
         promptPathInfos: [{ raw: 'prompts.txt', resolved: '/base/path/prompts.txt' }],
       });
     });
-  
+
     it('should handle array of string paths', () => {
-      const promptPathOrGlobs = ['prompt1.txt', 'prompt2.txt'];  
+      const promptPathOrGlobs = ['prompt1.txt', 'prompt2.txt'];
       const result = normalizePaths(promptPathOrGlobs, basePath);
-  
+
       expect(result).toEqual({
         inputType: PromptInputType.ARRAY,
         forceLoadFromFile: new Set(),
@@ -456,29 +529,29 @@ def prompt2:
           ['/base/path/prompt2.txt', 'prompt2.txt'],
         ]),
         promptPathInfos: [
-          { 
-            raw: 'prompt1.txt', 
+          {
+            raw: 'prompt1.txt',
             resolved: '/base/path/prompt1.txt',
             // label: 'prompt1.txt',
           },
-          { 
-            raw: 'prompt2.txt', 
+          {
+            raw: 'prompt2.txt',
             resolved: '/base/path/prompt2.txt',
             // label: 'prompt2.txt',
           },
         ],
       });
     });
-  
+
     it('should handle object mapping of paths to display strings', () => {
       const promptPathOrGlobs = {
         'prompts/prompt1.txt': 'Prompt 1',
         'prompts/prompt2.txt': 'Prompt 2',
       };
       mockedPath.resolve.mockImplementation((...args) => args.join('/'));
-  
+
       const result = normalizePaths(promptPathOrGlobs, basePath);
-  
+
       expect(result).toEqual({
         inputType: PromptInputType.NAMED,
         forceLoadFromFile: new Set(),
@@ -492,20 +565,21 @@ def prompt2:
         ],
       });
     });
-  
+
     it('should handle globs in array of string paths', () => {
       const promptPathOrGlobs = ['file://./prompts/*.txt'];
-      mockedGlobSync.mockReturnValue(['/base/path/prompts/prompt1.txt', '/base/path/prompts/prompt2.txt']);
-  
+      mockedGlobSync.mockReturnValue([
+        '/base/path/prompts/prompt1.txt',
+        '/base/path/prompts/prompt2.txt',
+      ]);
+
       const result = normalizePaths(promptPathOrGlobs, basePath);
-  
+
       expect(mockedGlobSync).toHaveBeenCalledTimes(1);
       expect(result).toEqual({
         inputType: PromptInputType.ARRAY,
         forceLoadFromFile: new Set(['./prompts/*.txt']),
-        resolvedPathToDisplay: new Map([
-          ['/base/path/./prompts/*.txt', 'file://./prompts/*.txt'],
-        ]),
+        resolvedPathToDisplay: new Map([['/base/path/./prompts/*.txt', 'file://./prompts/*.txt']]),
         promptPathInfos: [
           { raw: './prompts/*.txt', resolved: '/base/path/prompts/prompt1.txt' },
           { raw: './prompts/*.txt', resolved: '/base/path/prompts/prompt2.txt' },
@@ -516,15 +590,13 @@ def prompt2:
     it('should return raw and resolved paths when no files match', () => {
       const promptPathOrGlobs = ['file.js:func'];
       mockedGlobSync.mockReturnValue([]);
-  
+
       const result = normalizePaths(promptPathOrGlobs, basePath);
-  
+
       expect(result).toEqual({
         inputType: PromptInputType.ARRAY,
         forceLoadFromFile: new Set(),
-        resolvedPathToDisplay: new Map([
-          ['/base/path/file.js:func', 'file.js:func'],
-        ]),
+        resolvedPathToDisplay: new Map([['/base/path/file.js:func', 'file.js:func']]),
         promptPathInfos: [
           { raw: 'file.js:func', resolved: '/base/path/file.js:func', label: 'file.js:func' },
         ],
@@ -533,113 +605,12 @@ def prompt2:
 
     it('should throw an error for unsupported prompt path type', () => {
       const unsupportedInput = 123 as any; // Intentionally using an unsupported type
-  
+
       expect(() => normalizePaths(unsupportedInput, basePath)).toThrow(
-        `Unsupported prompt path type: ${JSON.stringify(unsupportedInput)}`
+        `Unsupported prompt path type: ${JSON.stringify(unsupportedInput)}`,
       );
     });
   });
-  
-
-describe.skip('normalizePaths', () => {
-  const basePath = '/base/path';
-  const mockedPath = path as jest.Mocked<typeof path>;
-  const mockedGlobSync = jest.mocked(globSync);
-
-  it('should normalize a single string path', () => {
-    const promptPathOrGlobs = 'prompts.txt';
-    mockedPath.resolve.mockImplementation((...args) => args.join('/'));
-
-    const result = normalizePaths(promptPathOrGlobs, basePath);
-
-    expect(result).toEqual({
-      inputType: 'STRING',
-      forceLoadFromFile: new Set(),
-      resolvedPathToDisplay: new Map([['/base/path/prompts.txt', 'prompts.txt']]),
-      promptPathInfos: [{ raw: 'prompts.txt', resolved: '/base/path/prompts.txt' }],
-    });
-  });
-
-  it('should normalize a string path starting with file://', () => {
-    const promptPathOrGlobs = 'file://prompts.txt';
-    mockedPath.resolve.mockImplementation((...args) => args.join('/'));
-
-    const result = normalizePaths(promptPathOrGlobs, basePath);
-
-    expect(result).toEqual({
-      inputType: 'STRING',
-      forceLoadFromFile: new Set(['prompts.txt']),
-      resolvedPathToDisplay: new Map([['/base/path/prompts.txt', 'prompts.txt']]),
-      promptPathInfos: [{ raw: 'prompts.txt', resolved: '/base/path/prompts.txt' }],
-    });
-  });
-
-  it('should handle array of string paths', () => {
-    const promptPathOrGlobs = ['prompt1.txt', 'prompt2.txt'];
-    mockedPath.resolve.mockImplementation((...args) => args.join('/'));
-
-    const result = normalizePaths(promptPathOrGlobs, basePath);
-
-    expect(result).toEqual({
-      inputType: 'ARRAY',
-      forceLoadFromFile: new Set(),
-      resolvedPathToDisplay: new Map([
-        ['/base/path/prompt1.txt', 'prompt1.txt'],
-        ['/base/path/prompt2.txt', 'prompt2.txt'],
-      ]),
-      promptPathInfos: [
-        { raw: 'prompt1.txt', resolved: '/base/path/prompt1.txt' },
-        { raw: 'prompt2.txt', resolved: '/base/path/prompt2.txt' },
-      ],
-    });
-  });
-
-  it('should handle object mapping of paths to display strings', () => {
-    const promptPathOrGlobs = {
-      'prompts/prompt1.txt': 'Prompt 1',
-      'prompts/prompt2.txt': 'Prompt 2',
-    };
-    mockedPath.resolve.mockImplementation((...args) => args.join('/'));
-
-    const result = normalizePaths(promptPathOrGlobs, basePath);
-
-    expect(result).toEqual({
-      inputType: 'NAMED',
-      forceLoadFromFile: new Set(),
-      resolvedPathToDisplay: new Map([
-        ['/base/path/prompts/prompt1.txt', 'Prompt 1'],
-        ['/base/path/prompts/prompt2.txt', 'Prompt 2'],
-      ]),
-      promptPathInfos: [
-        { raw: 'prompts/prompt1.txt', resolved: '/base/path/prompts/prompt1.txt' },
-        { raw: 'prompts/prompt2.txt', resolved: '/base/path/prompts/prompt2.txt' },
-      ],
-    });
-  });
-
-  it('should handle globs in array of string paths', () => {
-    const promptPathOrGlobs = ['file://./prompts/*.txt'];
-    mockedPath.resolve.mockImplementation((...args) => args.join('/'));
-    mockedGlobSync.mockReturnValue(['/base/path/prompts/prompt1.txt', '/base/path/prompts/prompt2.txt']);
-
-    const result = normalizePaths(promptPathOrGlobs, basePath);
-
-    expect(mockedGlobSync).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({
-      inputType: 'ARRAY',
-      forceLoadFromFile: new Set(['./prompts/*.txt']),
-      resolvedPathToDisplay: new Map([
-        ['/base/path/prompts/prompt1.txt', './prompts/*.txt'],
-        ['/base/path/prompts/prompt2.txt', './prompts/*.txt'],
-      ]),
-      promptPathInfos: [
-        { raw: './prompts/*.txt', resolved: '/base/path/prompts/prompt1.txt' },
-        { raw: './prompts/*.txt', resolved: '/base/path/prompts/prompt2.txt' },
-      ],
-    });
-  });
-});
-
 
   describe('readProviderPromptMap', () => {
     const samplePrompts: Prompt[] = [
