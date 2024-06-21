@@ -1,6 +1,8 @@
 import type logger from './logger';
 import type { fetchWithCache, getCache } from './cache';
 
+type NonEmptyArray<T> = [T, ...T[]];
+
 export type FilePath = string;
 
 export interface CommandLineOptions {
@@ -280,8 +282,6 @@ export interface Prompt {
     provider?: ApiProvider;
   }) => Promise<string | object>;
 }
-
-type NonEmptyArray<T> = [T, ...T[]];
 
 export type Prompts = NonEmptyArray<Prompt>;
 
