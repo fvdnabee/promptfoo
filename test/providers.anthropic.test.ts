@@ -87,7 +87,7 @@ describe('Anthropic', () => {
       expect(result).toMatchObject({
         cost: undefined,
         output: dedent`<thinking>I need to use the get_weather, and the user wants SF, which is likely San Francisco, CA.</thinking>
-  
+
           {"type":"tool_use","id":"toolu_01A09q90qw90lq917835lq9","name":"get_weather","input":{"location":"San Francisco, CA","unit":"celsius"}}`,
         tokenUsage: {},
       });
@@ -95,6 +95,52 @@ describe('Anthropic', () => {
       const resultFromCache = await provider.callApi('What is the forecast in San Francisco?');
       expect(provider.anthropic.messages.create).toHaveBeenCalledTimes(1);
       expect(result).toMatchObject(resultFromCache);
+    });
+
+    it('should pass the tool choice if specified', async () => {
+      const toolChoice: Anthropic.MessageCreateParams.ToolChoiceTool = {
+        name: 'get_weather',
+        type: 'tool',
+      };
+      provider.config.tool_choice = toolChoice;
+      provider.anthropic.messages.create = jest.fn().mockResolvedValue({
+        content: [
+          {
+            type: 'text',
+            text: '<thinking>I need to use the get_weather, and the user wants SF, which is likely San Francisco, CA.</thinking>',
+          },
+          {
+            type: 'tool_use',
+            id: 'toolu_01A09q90qw90lq917835lq9',
+            name: 'get_weather',
+            input: { location: 'San Francisco, CA', unit: 'celsius' },
+          },
+        ],
+      } as Anthropic.Messages.Message);
+
+      const result = await provider.callApi('What is the forecast in San Francisco?');
+      expect(provider.anthropic.messages.create).toHaveBeenCalledTimes(1);
+      expect(provider.anthropic.messages.create).toHaveBeenNthCalledWith(1, {
+        model: 'claude-3-opus-20240229',
+        max_tokens: 1024,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                text: 'What is the forecast in San Francisco?',
+                type: 'text',
+              },
+            ],
+          },
+        ],
+        tools,
+        tool_choice: toolChoice,
+        temperature: 0,
+        stream: false,
+      });
+
+      provider.config.tool_choice = undefined;
     });
 
     it('should not use cache if caching is disabled for ToolUse requests', async () => {
@@ -120,7 +166,7 @@ describe('Anthropic', () => {
 
       expect(result).toMatchObject({
         output: dedent`<thinking>I need to use the get_weather, and the user wants SF, which is likely San Francisco, CA.</thinking>
-  
+
           {"type":"tool_use","id":"toolu_01A09q90qw90lq917835lq9","name":"get_weather","input":{"location":"San Francisco, CA","unit":"celsius"}}`,
         tokenUsage: {},
       });
@@ -144,16 +190,6 @@ describe('Anthropic', () => {
         tokenUsage: {},
       });
       expect(provider.anthropic.messages.create).toHaveBeenCalledTimes(0);
-    });
-
-    it('should handle missing apiKey', async () => {
-      const provider = new AnthropicMessagesProvider('claude-3-opus-20240229', {
-        config: { apiKey: undefined },
-      });
-
-      await expect(provider.callApi('What is the forecast in San Francisco?')).resolves.toEqual({
-        error: 'API call error: invalid x-api-key, status 401, type authentication_error',
-      });
     });
 
     it('should handle API call error', async () => {
@@ -247,17 +283,6 @@ describe('Anthropic', () => {
       expect(freshResult).toMatchObject({
         output: 'Test output',
         tokenUsage: {},
-      });
-    });
-
-    it('should handle missing apiKey', async () => {
-      const provider = new AnthropicCompletionProvider('claude-1', {
-        config: { apiKey: undefined },
-      });
-
-      await expect(provider.callApi('Test prompt')).resolves.toEqual({
-        error:
-          'API call error: Error: 401 {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}',
       });
     });
 

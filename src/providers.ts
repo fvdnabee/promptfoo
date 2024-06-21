@@ -401,6 +401,7 @@ export default {
   OpenAiChatCompletionProvider,
   OpenAiAssistantProvider,
   AnthropicCompletionProvider,
+  AnthropicMessagesProvider,
   ReplicateProvider,
   LocalAiCompletionProvider,
   LocalAiChatProvider,
