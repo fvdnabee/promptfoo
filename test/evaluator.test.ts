@@ -538,6 +538,48 @@ describe('evaluator', () => {
     expect(summary.results[0].response?.output).toBe('Test output');
   });
 
+  it('evaluate with allowed prompts filtering', async () => {
+    const mockApiProvider: ApiProvider = {
+      id: jest.fn().mockReturnValue('test-provider'),
+      callApi: jest.fn().mockResolvedValue({
+        output: 'Test output',
+        tokenUsage: { total: 10, prompt: 5, completion: 5, cached: 0 },
+      }),
+    };
+  
+    const testSuite: TestSuite = {
+      providers: [mockApiProvider],
+      prompts: [
+        { raw: 'Test prompt 1', label: 'prompt1' },
+        { raw: 'Test prompt 2', label: 'prompt2' },
+        { raw: 'Test prompt 3', label: 'group1:prompt3' },
+      ],
+      providerPromptMap: {
+        'test-provider': ['prompt1', 'group1'],
+      },
+      tests: [
+        {
+          vars: { var1: 'value1', var2: 'value2' },
+        },
+      ],
+    };
+  
+    const summary = await evaluate(testSuite, {});
+  
+    expect(mockApiProvider.callApi).toHaveBeenCalledTimes(2);
+    expect(summary).toMatchObject({
+      stats: {
+        successes: 2,
+        failures: 0
+      },
+      results: [
+        { prompt: { label: 'prompt1' } },
+        { prompt: { label: 'group1:prompt3' } }
+      ]
+    });
+  });
+  
+
   it('evaluate with scenarios', async () => {
     const mockApiProvider: ApiProvider = {
       id: jest.fn().mockReturnValue('test-provider'),
