@@ -10,9 +10,8 @@ import {
   readPrompts,
   readProviderPromptMap,
 } from '../src/prompts';
-
-import type { Prompt, UnifiedConfig } from '../src/types';
 import { runPython } from '../src/python/wrapper';
+import type { Prompt, UnifiedConfig } from '../src/types';
 
 jest.mock('../src/esm');
 jest.mock('../src/python/wrapper', () => ({
@@ -29,12 +28,12 @@ jest.mock('glob', () => ({
 }));
 
 jest.mock('fs', () => ({
-  readFileSync: jest.fn(),
-  writeFileSync: jest.fn(),
-  statSync: jest.fn(),
-  readdirSync: jest.fn(),
   existsSync: jest.fn(),
   mkdirSync: jest.fn(),
+  readdirSync: jest.fn(),
+  readFileSync: jest.fn(),
+  statSync: jest.fn(),
+  writeFileSync: jest.fn(),
 }));
 jest.mock('path', () => {
   const actual = jest.requireActual('path');
@@ -58,9 +57,9 @@ describe('prompts', () => {
   describe('readPrompts', () => {
     it('with single prompt file', async () => {
       jest.mocked(fs.readFileSync).mockReturnValue('Test prompt 1\n---\nTest prompt 2');
-      jest.mocked(fs.statSync).mockReturnValue({ isDirectory: () => false });
+      jest.mocked(fs.statSync).mockReturnValue({ isDirectory: () => false } as fs.Stats);
       const promptPaths = ['prompts.txt'];
-      jest.mocked(globSync).mockImplementation((pathOrGlob) => [pathOrGlob]);
+      jest.mocked(globSync).mockImplementation((pathOrGlob) => [pathOrGlob] as string[]);
 
       const result = await readPrompts(promptPaths);
 
@@ -73,9 +72,9 @@ describe('prompts', () => {
         .mocked(fs.readFileSync)
         .mockReturnValueOnce('Test prompt 1')
         .mockReturnValueOnce('Test prompt 2');
-      jest.mocked(fs.statSync).mockReturnValue({ isDirectory: () => false });
+      jest.mocked(fs.statSync).mockReturnValue({ isDirectory: () => false } as fs.Stats);
       const promptPaths = ['prompt1.txt', 'prompt2.txt'];
-      jest.mocked(globSync).mockImplementation((pathOrGlob) => [pathOrGlob]);
+      jest.mocked(globSync).mockImplementation((pathOrGlob) => [pathOrGlob] as string[]);
 
       const result = await readPrompts(promptPaths);
 
@@ -84,13 +83,13 @@ describe('prompts', () => {
     });
 
     it('with directory', async () => {
-      jest.mocked(fs.statSync).mockReturnValue({ isDirectory: () => true });
-      jest.mocked(globSync).mockImplementation((pathOrGlob) => [pathOrGlob]);
+      jest.mocked(fs.statSync).mockReturnValue({ isDirectory: () => true } as fs.Stats);
+      jest.mocked(globSync).mockImplementation((pathOrGlob) => [pathOrGlob] as string[]);
       jest.mocked(fs.readdirSync).mockReturnValue(['prompt1.txt', 'prompt2.txt']);
       jest.mocked(fs.readFileSync).mockImplementation((filePath) => {
-        if (filePath.endsWith(path.join('prompts', 'prompt1.txt'))) {
+        if (filePath.toString().endsWith(path.join('prompts', 'prompt1.txt'))) {
           return 'Test prompt 1';
-        } else if (filePath.endsWith(path.join('prompts', 'prompt2.txt'))) {
+        } else if (filePath.toString().endsWith(path.join('prompts', 'prompt2.txt'))) {
           return 'Test prompt 2';
         }
       });
@@ -218,19 +217,22 @@ def prompt2:
         '2.txt': 'Second text file content',
       };
 
-      jest.mocked(fs.readFileSync).mockImplementation((path: string) => {
-        if (path.includes('1.txt')) {
+      jest.mocked(fs.readFileSync).mockImplementation((path: fs.PathLike) => {
+        if (path.toString().includes('1.txt')) {
           return fileContents['1.txt'];
-        } else if (path.includes('2.txt')) {
+        } else if (path.toString().includes('2.txt')) {
           return fileContents['2.txt'];
         }
         throw new Error('Unexpected file path in test');
       });
-      jest.mocked(fs.statSync).mockImplementation((path: string) => ({
-        isDirectory: () => path.includes('prompts'),
-      }));
-      jest.mocked(fs.readdirSync).mockImplementation((path: string) => {
-        if (path.includes('prompts')) {
+      jest.mocked(fs.statSync).mockImplementation(
+        (path: fs.PathLike) =>
+          ({
+            isDirectory: () => path.toString().includes('prompts'),
+          }) as fs.Stats,
+      );
+      jest.mocked(fs.readdirSync).mockImplementation((path: fs.PathLike) => {
+        if (path.toString().includes('prompts')) {
           return ['prompt1.txt', 'prompt2.txt'];
         }
         throw new Error('Unexpected directory path in test');
@@ -271,12 +273,30 @@ def prompt2:
       expect(result).toEqual([{ raw: 'rawPrompt', label: 'rawPrompt' }]);
     });
 
+    it('should handle raw prompt and log warning if stat is undefined and it looks like a filepath', async () => {
+      const promptPathInfo = { raw: 'raw/path/to/file.txt', resolved: '/resolved/path/prompt.txt' };
+      const forceLoadFromFile = new Set<string>();
+      const resolvedPathToDisplay = new Map<string, string>();
+      const basePath = '/base/path';
+
+      jest.mocked(fs.statSync).mockReturnValue(undefined);
+
+      const result = await loadPromptContents(
+        promptPathInfo,
+        forceLoadFromFile,
+        resolvedPathToDisplay,
+        basePath,
+      );
+
+      expect(result).toEqual([{ raw: 'raw/path/to/file.txt', label: 'raw/path/to/file.txt' }]);
+    });
+
     it('should handle directory prompts', async () => {
       mockedFs.statSync.mockReturnValue({ isDirectory: () => true } as fs.Stats);
       mockedFs.readdirSync.mockReturnValue(['file1.txt', 'file2.txt']);
       mockedFs.readFileSync.mockImplementation((filePath) => {
-        if (filePath.includes('file1.txt')) return 'Content of file1';
-        if (filePath.includes('file2.txt')) return 'Content of file2';
+        if (filePath.toString().includes('file1.txt')) return 'Content of file1';
+        if (filePath.toString().includes('file2.txt')) return 'Content of file2';
         return '';
       });
       mockedPath.join.mockImplementation((...args) => args.join('/'));
@@ -640,9 +660,9 @@ def prompt2:
     });
 
     it('should return a map with "Custom function" as key when providers is a function', () => {
-      const config: Partial<UnifiedConfig> = {
+      const config = {
         providers: () => Promise.resolve({ data: [] }),
-      };
+      } as Partial<UnifiedConfig>;
       const result = readProviderPromptMap(config, samplePrompts);
       expect(result).toEqual({
         'Custom function': ['Prompt 1', 'Prompt 2'],

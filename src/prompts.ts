@@ -126,7 +126,7 @@ export async function loadPromptContents(
   console.info('basePath', basePath);
   console.info('inputType', inputType);
   let resolvedPath: string | undefined;
-  let promptContents: Prompt[] = [];
+  const promptContents: Prompt[] = [];
   const parsedPath = path.parse(promptPathInfo.resolved);
   let filename = parsedPath.base;
   let functionName: string | undefined;
@@ -246,10 +246,9 @@ export async function loadPromptContents(
   }
   if (promptContents.length === 1 && !promptContents[0]['function']) {
     // Split raw text file into multiple prompts
-    const content = promptContents[0].raw;
-    promptContents = content
+    return promptContents[0].raw
       .split(PROMPT_DELIMITER)
-      .map((p) => ({ raw: p.trim(), label: p.trim() }));
+      .map((p) => ({ raw: p.trim(), label: p.trim() })) as Prompts;
   }
   if (promptContents.length === 0) {
     throw new Error(`There are no prompts in ${JSON.stringify(promptPathInfo)}`);
