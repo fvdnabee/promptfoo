@@ -114,7 +114,7 @@ export enum PromptInputType {
  * @returns {Promise<Prompts>} Promise resolving to the loaded prompts.
  */
 export async function loadPromptContents(
-  promptPathInfo: { raw: string; resolved: string },
+  promptPathInfo: { raw: string; resolved: string; label?: string },
   forceLoadFromFile: Set<string>,
   resolvedPathToDisplay: Map<string, string>,
   basePath: string,
@@ -125,12 +125,11 @@ export async function loadPromptContents(
   const parsedPath = path.parse(promptPathInfo.resolved);
   let filename = parsedPath.base;
   let functionName: string | undefined;
-
-  const scriptExtensions = ['.js', '.cjs', '.mjs', '.py'];
+  const labelPrefix: string = promptPathInfo.label ? `${promptPathInfo.label}: ` : '';
 
   if (parsedPath.base.includes(':')) {
     const splits = parsedPath.base.split(':');
-    if (splits[0] && scriptExtensions.some((ext) => splits[0].endsWith(ext))) {
+    if (splits[0] && ['.js', '.cjs', '.mjs', '.py'].some((ext) => splits[0].endsWith(ext))) {
       [filename, functionName] = splits;
     }
   }
@@ -148,7 +147,7 @@ export async function loadPromptContents(
 
   if (!stat) {
     // If the path doesn't exist, it's probably a raw prompt
-    promptContents.push({ raw: promptPathInfo.raw, label: promptPathInfo.raw });
+    promptContents.push({ raw: promptPathInfo.raw, label: `${labelPrefix}${promptPathInfo.raw}` });
     if (maybeFilepath(promptPathInfo.raw)) {
       // It looks like a filepath, so falling back could be a mistake. Print a warning
       logger.warn(
@@ -164,13 +163,15 @@ export async function loadPromptContents(
       resolvedPathToDisplay.set(resolvedPath, joinedPath);
       return fs.readFileSync(resolvedPath, 'utf-8');
     });
-    promptContents.push(...fileContents.map((content) => ({ raw: content, label: content })));
+    promptContents.push(
+      ...fileContents.map((content) => ({ raw: content, label: `${labelPrefix}${content}` })),
+    );
   } else if (['.js', '.cjs', '.mjs'].includes(ext)) {
     const promptFunction = await importModule(promptPath, functionName);
     const resolvedPathLookup = functionName ? `${promptPath}:${functionName}` : promptPath;
     promptContents.push({
       raw: String(promptFunction),
-      label: resolvedPathToDisplay.get(resolvedPathLookup) || String(promptFunction),
+      label: `${labelPrefix}${resolvedPathToDisplay.get(resolvedPathLookup) || String(promptFunction)}`,
       function: promptFunction,
     });
   } else if (ext === '.py') {
@@ -185,7 +186,7 @@ export async function loadPromptContents(
             ...context,
             provider: {
               id: context.provider?.id,
-              label: context.provider?.label,
+              label: `${labelPrefix}${context.provider?.label}`,
             },
           },
         ]);
@@ -202,10 +203,10 @@ export async function loadPromptContents(
         return results;
       }
     };
-    let label = fileContent;
+    let label = `${labelPrefix}${fileContent}`;
     if (inputType === PromptInputType.NAMED) {
       const resolvedPathLookup = functionName ? `${promptPath}:${functionName}` : promptPath;
-      label = resolvedPathToDisplay.get(resolvedPathLookup) || resolvedPathLookup;
+      label = `${labelPrefix}${resolvedPathToDisplay.get(resolvedPathLookup) || resolvedPathLookup}`;
     }
     promptContents.push({
       raw: fileContent,
@@ -218,7 +219,7 @@ export async function loadPromptContents(
     // Special case for JSONL file
     const jsonLines = fileContent.split(/\r?\n/).filter((line) => line.length > 0);
     for (const json of jsonLines) {
-      promptContents.push({ raw: json, label: json });
+      promptContents.push({ raw: json, label: `${labelPrefix}${json}` });
     }
     if (promptContents.length === 0) {
       throw new Error(`There are no prompts in ${JSON.stringify(promptPathInfo)}`);
@@ -228,18 +229,17 @@ export async function loadPromptContents(
     const fileContent = fs.readFileSync(promptPath, 'utf-8');
     let label: string | undefined;
     if (inputType === PromptInputType.NAMED) {
-      label = resolvedPathToDisplay.get(promptPath) || promptPath;
+      label = `${labelPrefix}${resolvedPathToDisplay.get(promptPath) || promptPath}`;
     } else {
-      label = fileContent.length > 200 ? promptPath : fileContent;
+      label = `${labelPrefix}${fileContent.length > 200 ? promptPath : fileContent}`;
     }
-    label = resolvedPathToDisplay.get(promptPath) || promptPath;
     promptContents.push({ raw: fileContent, label });
   }
   if (promptContents.length === 1 && !promptContents[0]['function']) {
     // Split raw text file into multiple prompts
     return promptContents[0].raw
       .split(PROMPT_DELIMITER)
-      .map((p) => ({ raw: p.trim(), label: p.trim() })) as Prompts;
+      .map((p) => ({ raw: p.trim(), label: `${labelPrefix}${p.trim()}` })) as Prompts;
   }
   if (promptContents.length === 0) {
     throw new Error(`There are no prompts in ${JSON.stringify(promptPathInfo)}`);
@@ -251,7 +251,7 @@ interface NormalizePathsResult {
   inputType: PromptInputType | undefined;
   forceLoadFromFile: Set<string>;
   resolvedPathToDisplay: Map<string, string>;
-  promptPathInfos: { raw: string; resolved: string }[];
+  promptPathInfos: { raw: string; resolved: string; label?: string }[];
 }
 
 /**
@@ -288,8 +288,11 @@ export function normalizePaths(
   if (Array.isArray(promptPathOrGlobs)) {
     // TODO(ian): Handle object array, such as OpenAI messages
     let inputType: PromptInputType = PromptInputType.ARRAY;
-    const promptPathInfos: { raw: string; resolved: string }[] = promptPathOrGlobs.flatMap(
-      (pathOrGlob) => {
+    const promptPathInfos: { raw: string; resolved: string; label?: string }[] =
+      promptPathOrGlobs.flatMap((pathOrGlob) => {
+        logger.debug(
+          `-------------------\nNormalizing path or glob: ${JSON.stringify(pathOrGlob)}\n-----------------`,
+        );
         let label;
         let rawPath: string;
         if (typeof pathOrGlob === 'object') {
@@ -327,12 +330,15 @@ export function normalizePaths(
           `Expanded prompt ${rawPath} to ${resolvedPath} and then to ${JSON.stringify(globbedPaths)}`,
         );
         if (globbedPaths && globbedPaths.length > 0) {
-          return globbedPaths.map((globbedPath) => ({ raw: rawPath, resolved: globbedPath }));
+          return globbedPaths.map((globbedPath) => ({
+            raw: rawPath,
+            resolved: globbedPath,
+            label,
+          }));
         }
         // globSync will return empty if no files match, which is the case when the path includes a function name like: file.js:func
         return [{ raw: rawPath, resolved: resolvedPath, label }];
-      },
-    );
+      });
 
     return {
       inputType,
@@ -385,6 +391,7 @@ export async function readPrompts(
 
   const promptContents: Prompt[] = [];
   for (const promptPathInfo of promptPathInfos) {
+    logger.debug(`Loading prompt contents for ${JSON.stringify(promptPathInfo)}`);
     promptContents.push(
       ...(await loadPromptContents(
         promptPathInfo,
