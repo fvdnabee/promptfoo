@@ -120,11 +120,6 @@ export async function loadPromptContents(
   basePath: string,
   inputType?: PromptInputType,
 ): Promise<Prompts> {
-  console.info('promptPathInfo', promptPathInfo);
-  console.info('forceLoadFromFile', forceLoadFromFile);
-  console.info('resolvedPathToDisplay', resolvedPathToDisplay);
-  console.info('basePath', basePath);
-  console.info('inputType', inputType);
   let resolvedPath: string | undefined;
   const promptContents: Prompt[] = [];
   const parsedPath = path.parse(promptPathInfo.resolved);
@@ -231,7 +226,6 @@ export async function loadPromptContents(
     return promptContents as Prompts;
   } else if (ext === '.txt') {
     const fileContent = fs.readFileSync(promptPath, 'utf-8');
-    console.log('fileContent', fileContent);
     let label: string | undefined;
     if (inputType === PromptInputType.NAMED) {
       label = resolvedPathToDisplay.get(promptPath) || promptPath;
@@ -332,10 +326,6 @@ export function normalizePaths(
         logger.debug(
           `Expanded prompt ${rawPath} to ${resolvedPath} and then to ${JSON.stringify(globbedPaths)}`,
         );
-        console.warn('------------------------------');
-        console.warn(globbedPaths);
-        console.warn('------------------------------');
-
         if (globbedPaths && globbedPaths.length > 0) {
           return globbedPaths.map((globbedPath) => ({ raw: rawPath, resolved: globbedPath }));
         }
