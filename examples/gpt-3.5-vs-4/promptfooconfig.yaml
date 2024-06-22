@@ -1,4 +1,4 @@
-prompts: 
+prompts:
   1: 'Solve this riddle: {{riddle}}'
   2: 'Solve this puzzle: {{riddle}}'
 

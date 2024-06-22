@@ -267,16 +267,20 @@ export function normalizePaths(
   const forceLoadFromFile = new Set<string>();
   const resolvedPathToDisplay = new Map<string, string>();
 
-
   if (typeof promptPathOrGlobs === 'object' && !Array.isArray(promptPathOrGlobs)) {
     console.warn('promptPathOrGlobs', promptPathOrGlobs);
-    promptPathOrGlobs = Object.values(promptPathOrGlobs);
+    promptPathOrGlobs = Object.entries(promptPathOrGlobs).map(([id, raw]) => ({
+      id: raw,
+      raw,
+      label: `${id}: ${raw}`,
+    }));
+    console.warn('promptPathOrGlobs', promptPathOrGlobs);
   }
 
   const promptArrayOrObject: (string | Partial<Prompt>)[] =
     typeof promptPathOrGlobs === 'string' ? [promptPathOrGlobs] : promptPathOrGlobs;
 
-  let resolvedPath: string;
+  let resolvedPath: string = '';
 
   if (Array.isArray(promptArrayOrObject) && promptArrayOrObject.length > 0) {
     // TODO(ian): Handle object array, such as OpenAI messages
@@ -321,7 +325,11 @@ export function normalizePaths(
         );
 
         resolvedPath = path.resolve(basePath, rawPath);
-        resolvedPathToDisplay.set(resolvedPath, label);
+
+        resolvedPathToDisplay.set(
+          resolvedPath,
+          label.startsWith('file://') ? label.slice('file://'.length) : label,
+        );
         const globbedPaths = globSync(resolvedPath.replace(/\\/g, '/'), {
           windowsPathsNoEscape: true,
         });
